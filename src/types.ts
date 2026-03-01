@@ -68,5 +68,5 @@ export interface SelectedSatInfo {
   magStr: string | null;        // formatted magnitude or status string ("eclipsed" / "unknown" / "1.3")
 }
 
-export enum TargetLock { NONE, EARTH, MOON, SUN, PLANET }
+export enum TargetLock { NONE, EARTH, MOON, SUN, PLANET, SAT }
 export enum ViewMode { VIEW_3D, VIEW_2D }

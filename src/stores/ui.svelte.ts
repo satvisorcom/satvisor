@@ -28,6 +28,9 @@ class UIStore {
   // Marker group visibility (keyed by group id)
   markerVisibility = $state<Record<string, boolean>>({});
 
+  // Camera lock
+  lockTarget = $state<string>('Earth');
+
   // Window/modal visibility
   infoModalOpen = $state(false);
   settingsOpen = $state(false);

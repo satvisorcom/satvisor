@@ -105,6 +105,9 @@ export class App {
     if (!this.selectedSats.has(sat)) return;
     this.selectedSats.delete(sat);
     this.selectedSatsVersion++;
+    if (this.lockedSat === sat) {
+      this.exitSatLock();
+    }
     if (uiStore.hiddenSelectedSats.has(sat.noradId)) {
       const next = new Set(uiStore.hiddenSelectedSats);
       next.delete(sat.noradId);
@@ -119,6 +122,7 @@ export class App {
     uiStore.hiddenSelectedSats = new Set();
   }
   private activeLock = TargetLock.EARTH;
+  private lockedSat: Satellite | null = null;
   private viewMode = ViewMode.VIEW_3D;
   private hideUnselected = false;
   private unselectedFade = 1.0;
@@ -227,7 +231,7 @@ export class App {
       getOrreryMode: () => this.orreryCtrl.isOrreryMode,
       getActiveLock: () => this.activeLock,
       getMinZoom: () => getMinZoom(this.activeLock),
-      clearTargetLock: () => { this.activeLock = TargetLock.NONE; },
+      clearTargetLock: () => { if (this.lockedSat) this.exitSatLock(); else this.activeLock = TargetLock.NONE; },
       onSelect: () => this.handleClick(),
       onDoubleClick3D: () => this.handleDoubleClickLock(),
       onDoubleClick2D: () => { this.activeLock = TargetLock.EARTH; },
@@ -933,6 +937,14 @@ export class App {
     this.updateObserverMarker();
   }
 
+  /** Transition from SAT lock (ECI frame) back to Earth co-rotation without visual jump. */
+  private exitSatLock() {
+    const earthRotRad = (epochToGmst(timeStore.epoch) + this.cfg.earthRotationOffset) * DEG2RAD;
+    this.camera.setAngleX(this.camera.angleX - earthRotRad);
+    this.activeLock = TargetLock.EARTH;
+    this.lockedSat = null;
+  }
+
   // Orbit scrub state
   private scrubStartCamAngleX = 0;
   private scrubBaseEpoch = 0;
@@ -1096,6 +1108,9 @@ export class App {
     }
     this.prevSelectedSats = new Set(this.selectedSats);
 
+    // Earth rotation (needed for target lock + camera update)
+    const earthRotRad = (gmstDeg + this.cfg.earthRotationOffset) * DEG2RAD;
+
     // Target lock
     if (this.activeLock === TargetLock.EARTH) {
       if (this.viewMode === ViewMode.VIEW_2D) this.camera.setTarget2dXY(0, 0);
@@ -1114,11 +1129,23 @@ export class App {
     } else if (this.activeLock === TargetLock.PLANET && this.orreryCtrl.currentPromotedPlanet) {
       const pos = this.orreryCtrl.getPromotedBodyPosition();
       if (pos) this.camera.setTarget3d(pos);
+    } else if (this.activeLock === TargetLock.SAT && this.lockedSat) {
+      this.camera.setTarget3dXYZ(0, 0, 0);
     }
 
+    // Expose lock target to UI
+    const lockLabels: Record<number, string> = {
+      [TargetLock.NONE]: 'None',
+      [TargetLock.EARTH]: 'Earth',
+      [TargetLock.MOON]: 'Moon',
+      [TargetLock.SUN]: 'Sun',
+      [TargetLock.PLANET]: this.orreryCtrl.currentPromotedPlanet?.body.name ?? 'Planet',
+      [TargetLock.SAT]: this.lockedSat?.name ?? 'Satellite',
+    };
+    uiStore.lockTarget = lockLabels[this.activeLock] ?? 'Earth';
+
     // Smooth camera lerp + update camera transforms
-    const earthRotRad = (gmstDeg + this.cfg.earthRotationOffset) * DEG2RAD;
-    const isOrreryOrPlanet = this.activeLock === TargetLock.PLANET || this.orreryCtrl.isOrreryMode;
+    const isOrreryOrPlanet = this.activeLock === TargetLock.PLANET || this.activeLock === TargetLock.SAT || this.orreryCtrl.isOrreryMode;
     this.camera.updateFrame(dt, earthRotRad, isOrreryOrPlanet);
     this.camera3d.updateMatrixWorld();
 
@@ -1415,6 +1442,19 @@ export class App {
   }
 
   private handleDoubleClickLock() {
+    // Double-click on a hovered satellite → lock camera to it
+    if (this.hoveredSat) {
+      // Transition from Earth co-rotation to ECI frame without visual jump:
+      // camAX was = _camAngleX + earthRotRad; in SAT mode it becomes = _camAngleX + 0
+      // So add earthRotRad to _camAngleX to keep the same visual angle
+      const earthRotRad = (epochToGmst(timeStore.epoch) + this.cfg.earthRotationOffset) * DEG2RAD;
+      this.camera.setAngleX(this.camera.angleX + earthRotRad);
+      this.activeLock = TargetLock.SAT;
+      this.lockedSat = this.hoveredSat;
+      if (!this.selectedSats.has(this.hoveredSat)) this.toggleSat(this.hoveredSat);
+      return;
+    }
+
     this.raycaster.setFromCamera(this.input.mouseNDC, this.camera3d);
     const earthR = EARTH_RADIUS_KM / DRAW_SCALE;
     const moonR = MOON_RADIUS_KM / DRAW_SCALE;
@@ -1426,7 +1466,7 @@ export class App {
     const sunHit = this.raycaster.ray.intersectsSphere(this.tmpSphere);
     if (sunHit && !earthHit && !moonHit) this.activeLock = TargetLock.SUN;
     else if (moonHit && !earthHit) this.activeLock = TargetLock.MOON;
-    else if (earthHit) this.activeLock = TargetLock.EARTH;
+    else if (earthHit) { this.activeLock = TargetLock.EARTH; this.lockedSat = null; }
   }
 
   private detectHover3D() {

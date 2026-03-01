@@ -120,7 +120,14 @@
       onclick={() => uiStore.setSingleSelectMode(true)}>Single</Button>
   </div>
 {/snippet}
-<DraggableWindow id="selection" title="Selection" icon={selIcon} {headerExtra} bind:open={uiStore.selectionWindowOpen} focus={uiStore.selectionWindowFocus} initialX={9999} initialY={200}>
+{#snippet footer()}
+  <div class="lock-row">
+    <span class="lock-label">Lock</span>
+    <span class="lock-value">{uiStore.lockTarget}</span>
+    <span class="lock-hint">dblclick to change</span>
+  </div>
+{/snippet}
+<DraggableWindow id="selection" title="Selection" icon={selIcon} {headerExtra} {footer} bind:open={uiStore.selectionWindowOpen} focus={uiStore.selectionWindowFocus} initialX={9999} initialY={200}>
   <div class="sw">
     <div class="search-box">
       <Input
@@ -371,5 +378,25 @@
   }
   .dv {
     color: var(--text-dim);
+  }
+  .lock-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .lock-label {
+    color: var(--text-ghost);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 10px;
+  }
+  .lock-value {
+    color: var(--text-dim);
+  }
+  .lock-hint {
+    color: var(--text-ghost);
+    font-size: 10px;
+    margin-left: auto;
   }
 </style>
