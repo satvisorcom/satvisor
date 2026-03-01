@@ -28,6 +28,7 @@ const MOON_FRAG = `
 uniform sampler2D map;
 uniform sampler2D displacementMap;
 uniform vec3 sunDir;
+uniform vec3 moonWorldPos;
 uniform float showNight;
 uniform float bumpStrength;
 uniform float aoEnabled;
@@ -38,6 +39,11 @@ varying vec2 vUv;
 
 const float TEX_STEP = 1.0 / 4096.0;
 const float AO_STRENGTH = 14.0;
+const float EARTH_R = 6371.0;
+const float SUN_R = 696000.0;
+const float SUN_DIST = 149597870.7;
+const float UMBRA_TAN = (SUN_R - EARTH_R) / SUN_DIST;
+const float PENUMBRA_TAN = (SUN_R + EARTH_R) / SUN_DIST;
 
 void main() {
   vec3 tex = texture2D(map, vUv).rgb;
@@ -71,10 +77,33 @@ void main() {
   float diffuse = smoothstep(-0.20, 0.10, NdotL);
   diffuse = mix(1.0, diffuse, showNight);
 
+  // Lunar eclipse: check if Moon is in Earth's shadow cone
+  // moonWorldPos is the Moon center in km-space (Earth at origin)
+  float eclipseFactor = 1.0;
+  float d = -dot(moonWorldPos, sunDir); // distance along shadow axis
+  if (d > 0.0) {
+    // Perpendicular distance from the Earth-Sun axis
+    vec3 proj = moonWorldPos + d * sunDir;
+    float perpDist = length(proj);
+    float umbraR = EARTH_R - d * UMBRA_TAN;
+    float penumbraR = EARTH_R + d * PENUMBRA_TAN;
+    if (umbraR > 0.0 && perpDist < umbraR) {
+      eclipseFactor = 0.0;
+    } else if (perpDist < penumbraR) {
+      float innerR = max(umbraR, 0.0);
+      eclipseFactor = (perpDist - innerR) / (penumbraR - innerR);
+    }
+  }
+
   vec3 color = tex * diffuse * ao;
 
-  // Earthshine: faint blue fill on the dark side
-  float earthshine = max(0.0, -NdotL) * 0.015 * showNight;
+  // Lunar eclipse tint: copper-red in umbra/penumbra
+  vec3 eclipseColor = vec3(0.5, 0.08, 0.03);
+  float eclipseBlend = (1.0 - eclipseFactor) * showNight;
+  color = mix(color, eclipseColor * tex, eclipseBlend);
+
+  // Earthshine: faint blue fill on the dark side (suppress during eclipse)
+  float earthshine = max(0.0, -NdotL) * 0.015 * showNight * eclipseFactor;
   color += vec3(0.4, 0.5, 0.7) * earthshine;
 
   gl_FragColor = vec4(color, 1.0);
@@ -94,6 +123,7 @@ export class MoonScene {
         map: { value: moonTex },
         displacementMap: { value: displacementTex },
         sunDir: { value: new THREE.Vector3(1, 0, 0) },
+        moonWorldPos: { value: new THREE.Vector3(0, 0, 0) },
         showNight: { value: 1.0 },
         bumpStrength: { value: 1.5 },
         aoEnabled: { value: 1.0 },
@@ -135,6 +165,8 @@ export class MoonScene {
 
   update(currentEpoch: number) {
     const moonPosKm = calculateMoonPosition(currentEpoch);
+    // Pass km-space position to shader for lunar eclipse shadow computation
+    this.material.uniforms.moonWorldPos.value.copy(moonPosKm);
     this.drawPos.copy(moonPosKm).divideScalar(DRAW_SCALE);
     this.mesh.position.copy(this.drawPos);
 

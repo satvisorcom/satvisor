@@ -21,19 +21,29 @@ varying vec3 vWorldNormal;
 varying vec3 vViewDir;
 
 void main() {
-  // Fresnel: both vectors in world space
   float NdotV = clamp(dot(vWorldNormal, vViewDir), 0.0, 1.0);
-  float fresnel = pow(1.0 - NdotV, 1.5);
+  float NdotL = dot(vWorldNormal, sunDir);
 
-  // Atmosphere color
-  vec3 baseColor = vec3(0.3, 0.6, 1.0);
+  // Sharper fresnel — concentrates glow closer to the limb edge
+  float fresnel = pow(1.0 - NdotV, 3.5);
 
-  // Sun lighting in world space (sunDir is in world/ECI space)
-  float sunFacing = dot(vWorldNormal, sunDir);
-  float sunBlend = smoothstep(-0.3, 0.3, sunFacing);
+  // Sun brightness: 15% on night side, 100% on day side (matches original range)
+  float sunBlend = smoothstep(-0.3, 0.3, NdotL);
   float brightness = mix(0.15, 1.0, sunBlend);
 
-  vec3 color = baseColor * brightness * atmosphereStrength;
+  // Atmosphere base color with sunset shift near terminator
+  vec3 dayColor = vec3(0.3, 0.6, 1.0);
+  vec3 sunsetColor = vec3(1.0, 0.5, 0.2);
+  float sunsetBlend = smoothstep(0.35, -0.15, NdotL);
+  vec3 atmosColor = mix(dayColor, sunsetColor, sunsetBlend);
+
+  // Forward-scatter glow: brighter when looking toward sun through the limb
+  float VdotL = dot(vViewDir, sunDir);
+  float forwardGlow = pow(max(VdotL, 0.0), 8.0) * 0.25;
+  atmosColor += vec3(1.0, 0.6, 0.3) * forwardGlow * sunBlend;
+
+  // HDR color for bloom (atmosphereStrength = 3.0 pushes values well above threshold)
+  vec3 color = atmosColor * brightness * atmosphereStrength;
   float alpha = fresnel * brightness;
 
   gl_FragColor = vec4(color, alpha);

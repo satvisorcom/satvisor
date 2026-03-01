@@ -75,9 +75,22 @@ void main() {
     float intensity = dot(normal, sunDir);
     float blend = smoothstep(-0.15, 0.15, intensity);
 
+    // Sunset scattering: 2-stop gradient (deep red near night → warm orange near day)
+    float scatterMult = smoothstep(-0.15, 0.25, intensity) * smoothstep(0.25, -0.15, intensity);
+    vec3 sunsetDeep = vec3(0.85, 0.2, 0.08);
+    vec3 sunsetWarm = vec3(1.0, 0.55, 0.2);
+    float gradPos = smoothstep(-0.12, 0.12, intensity);
+    vec3 sunsetColor = mix(sunsetDeep, sunsetWarm, gradPos);
+    vec3 scatteredDay = mix(day.rgb * ao, day.rgb * ao * sunsetColor * 1.5, scatterMult * 0.5);
+
+    // Surface haze: blue-to-sunset atmospheric haze near terminator
+    vec3 hazeColor = mix(vec3(0.15, 0.35, 0.75), sunsetColor, scatterMult);
+    float surfaceHaze = pow(max(1.0 - abs(intensity), 0.0), 2.0) * smoothstep(-0.1, 0.2, intensity) * 0.35;
+    scatteredDay = mix(scatteredDay, hazeColor, surfaceHaze);
+
     // Boost night emission for bloom (HDR values > 1.0)
     vec4 boostedNight = vec4(night.rgb * nightEmission, night.a);
     // Eclipse: blend day toward night lights instead of black
-    vec4 dayColor = mix(boostedNight, day * ao, eclipseFactor);
+    vec4 dayColor = mix(boostedNight, vec4(scatteredDay, day.a), eclipseFactor);
     gl_FragColor = mix(boostedNight, dayColor, blend);
 }

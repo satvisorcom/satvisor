@@ -116,13 +116,21 @@ export class MapRenderer {
             eclipseFactor = smoothstep(abs(moonAngR - SUN_ANG_R), moonAngR + SUN_ANG_R, sep);
           }
 
+          // Sunset scattering: 2-stop gradient (deep red → warm orange)
+          float scatterMult = smoothstep(-0.15, 0.25, rawIntensity) * smoothstep(0.25, -0.15, rawIntensity);
+          vec3 sunsetDeep = vec3(0.85, 0.2, 0.08);
+          vec3 sunsetWarm = vec3(1.0, 0.55, 0.2);
+          float gradPos = smoothstep(-0.12, 0.12, rawIntensity);
+          vec3 sunsetColor = mix(sunsetDeep, sunsetWarm, gradPos);
+          vec3 scatteredDay = mix(day.rgb, day.rgb * sunsetColor * 1.5, scatterMult * 0.5);
+
           if (showNight < 0.5) {
-            gl_FragColor = day * eclipseFactor;
+            gl_FragColor = vec4(scatteredDay * eclipseFactor, day.a);
             return;
           }
           vec4 night = texture2D(nightTexture, vUv);
           float blend = smoothstep(-0.15, 0.15, rawIntensity);
-          vec4 dayColor = mix(night, day, eclipseFactor);
+          vec4 dayColor = mix(night, vec4(scatteredDay, day.a), eclipseFactor);
           gl_FragColor = mix(night, dayColor, blend);
         }
       `,
