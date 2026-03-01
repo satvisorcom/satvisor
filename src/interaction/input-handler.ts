@@ -39,7 +39,10 @@ export class InputHandler {
   private _lastTouchPos = new THREE.Vector2();
   private _lastPinchDist = 0;
   private _lastTwoTouchCenter = new THREE.Vector2();
-  private _touchMoved = false;
+  private _touchStartPos = new THREE.Vector2();
+  private _touchStartTime = 0;
+  private _touchDragChecked = false;
+  private _touchGesture: 'pinch' | 'pan' | null = null;
 
   // Observer marker drag
   private _isDraggingObserver = false;
@@ -49,9 +52,16 @@ export class InputHandler {
   // Orbit scrub drag
   private _isDraggingOrbit = false;
 
+  // Left-drag orbit (fallback when observer/orbit scrub don't activate)
+  private _isLeftDragging = false;
+
   // UI overlay tracking
   private _pointerOverUI = false;
   private _canvas!: HTMLCanvasElement;
+
+  // Pointer event touch tracking (for browser DevTools touch emulation)
+  private _hasRealTouch = false;
+  private _pointerTouches = new Map<number, { x: number; y: number }>();
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -101,14 +111,17 @@ export class InputHandler {
       );
       this._pointerOverUI = e.target !== this._canvas;
 
-      // Observer marker drag
-      if (this._leftDown && !this._isDraggingObserver && !this._isDraggingOrbit) {
+      // Observer marker drag / orbit scrub / left-drag orbit
+      if (this._leftDown && !this._isDraggingObserver && !this._isDraggingOrbit && !this._isLeftDragging) {
         const dist = this._leftDownPos.distanceTo(this._mousePos);
-        if (dist > 4) {
-          // Moved enough to start drag — check observer first, then orbit scrub
+        if (dist > 8) {
+          // Moved enough to start drag — check observer first, then orbit scrub, then orbit
           this._isDraggingObserver = this.cb.tryStartObserverDrag();
           if (!this._isDraggingObserver) {
             this._isDraggingOrbit = this.cb.tryStartOrbitScrub();
+          }
+          if (!this._isDraggingObserver && !this._isDraggingOrbit) {
+            this._isLeftDragging = true;
           }
           this._leftDown = false; // don't re-check
         }
@@ -122,7 +135,7 @@ export class InputHandler {
         return; // don't orbit/pan while scrubbing
       }
 
-      if (this._isRightDragging || this._isMiddleDragging) {
+      if (this._isRightDragging || this._isMiddleDragging || this._isLeftDragging) {
         if (this.cb.getViewMode() === ViewMode.VIEW_2D) {
           // Pan 2D
           this.camera.pan2d(dx, dy);
@@ -140,6 +153,7 @@ export class InputHandler {
     });
 
     window.addEventListener('mousedown', (e) => {
+      this._pointerOverUI = e.target !== this._canvas;
       if (e.button === 0) {
         this._leftDown = true;
         this._leftDownPos.set(e.clientX, e.clientY);
@@ -150,6 +164,7 @@ export class InputHandler {
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) {
         this._leftDown = false;
+        this._isLeftDragging = false;
         if (this._isDraggingObserver) {
           this._isDraggingObserver = false;
         }
@@ -181,7 +196,7 @@ export class InputHandler {
       // Suppress click if we just finished dragging the observer or orbit scrub
       if (this._isDraggingObserver || this._isDraggingOrbit) return;
       // Check if left button was released after a drag (distance > threshold)
-      if (this._leftDownPos.distanceTo(new THREE.Vector2(e.clientX, e.clientY)) > 4) return;
+      if (this._leftDownPos.distanceTo(new THREE.Vector2(e.clientX, e.clientY)) > 8) return;
 
       // Ignore clicks on UI area
       if (e.clientX < 220 && e.clientY > 110 && e.clientY < 210) return;
@@ -261,109 +276,243 @@ export class InputHandler {
       if (e.button === 1) e.preventDefault();
     });
 
-    // Touch events
+    // Touch events (real touch devices)
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      this._touchCount = e.touches.length;
-      this._touchMoved = false;
-
-      if (e.touches.length === 1) {
-        this._lastTouchPos.set(e.touches[0].clientX, e.touches[0].clientY);
-        this._mousePos.set(e.touches[0].clientX, e.touches[0].clientY);
-        this._mouseNDC.set(
-          (e.touches[0].clientX / window.innerWidth) * 2 - 1,
-          -(e.touches[0].clientY / window.innerHeight) * 2 + 1,
-        );
-      } else if (e.touches.length === 2) {
-        const dx = e.touches[1].clientX - e.touches[0].clientX;
-        const dy = e.touches[1].clientY - e.touches[0].clientY;
-        this._lastPinchDist = Math.sqrt(dx * dx + dy * dy);
-        this._lastTwoTouchCenter.set(
-          (e.touches[0].clientX + e.touches[1].clientX) / 2,
-          (e.touches[0].clientY + e.touches[1].clientY) / 2,
-        );
-      }
+      this._hasRealTouch = true;
+      if (e.target !== this._canvas) return;
+      this._handleTouchStart(Array.from(e.touches, t => ({ x: t.clientX, y: t.clientY })));
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      this._touchMoved = true;
-
-      if (e.touches.length === 1 && this._touchCount === 1) {
-        // Single finger: orbit (3D) or pan (2D)
-        const tx = e.touches[0].clientX, ty = e.touches[0].clientY;
-        const dx = tx - this._lastTouchPos.x;
-        const dy = ty - this._lastTouchPos.y;
-        this._lastTouchPos.set(tx, ty);
-        this._mousePos.set(tx, ty);
-        this._mouseNDC.set(
-          (tx / window.innerWidth) * 2 - 1,
-          -(ty / window.innerHeight) * 2 + 1,
-        );
-
-        if (this.cb.getViewMode() === ViewMode.VIEW_2D) {
-          this.camera.pan2d(dx, dy);
-          this.cb.clearTargetLock();
-        } else {
-          this.camera.orbit(dx, dy);
-        }
-      } else if (e.touches.length === 2) {
-        // Two fingers: pinch zoom + pan
-        const dx = e.touches[1].clientX - e.touches[0].clientX;
-        const dy = e.touches[1].clientY - e.touches[0].clientY;
-        const pinchDist = Math.sqrt(dx * dx + dy * dy);
-        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-
-        // Pinch zoom
-        if (this._lastPinchDist > 0) {
-          const scale = pinchDist / this._lastPinchDist;
-          if (this.cb.getViewMode() === ViewMode.VIEW_2D) {
-            this.camera.pinchZoom2d(scale);
-          } else {
-            this.camera.pinchZoom3d(scale, this.cb.getMinZoom());
-          }
-        }
-
-        // Two-finger pan (3D only)
-        if (this.cb.getViewMode() === ViewMode.VIEW_3D) {
-          const panDx = centerX - this._lastTwoTouchCenter.x;
-          const panDy = centerY - this._lastTwoTouchCenter.y;
-          this.camera.pan3d(panDx, panDy);
-          this.cb.clearTargetLock();
-        }
-
-        this._lastPinchDist = pinchDist;
-        this._lastTwoTouchCenter.set(centerX, centerY);
-      }
+      this._handleTouchMove(Array.from(e.touches, t => ({ x: t.clientX, y: t.clientY })));
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
-      // Tap = select (only if finger didn't move)
-      if (!this._touchMoved && this._touchCount === 1 && e.touches.length === 0) {
-        // Orrery mode: pick planet
-        if (this.cb.getOrreryMode()) {
-          this.cb.onOrreryClick();
-          this._touchCount = 0;
-          return;
-        }
-        // Delegate satellite selection to App
-        this.cb.onSelect();
-
-        // Double tap detection
-        const now = performance.now() / 1000;
-        if (now - this._lastLeftClickTime < 0.3) {
-          if (this.cb.getViewMode() === ViewMode.VIEW_3D) {
-            this.cb.onDoubleClick3D();
-          } else {
-            this.cb.onDoubleClick2D();
-          }
-        }
-        this._lastLeftClickTime = now;
-      }
-      this._touchCount = e.touches.length;
-      this._lastPinchDist = 0;
+      this._handleTouchEnd(
+        Array.from(e.touches, t => ({ x: t.clientX, y: t.clientY })),
+        Array.from(e.changedTouches, t => ({ x: t.clientX, y: t.clientY })),
+      );
     }, { passive: false });
+
+    canvas.addEventListener('touchcancel', () => this._handleTouchCancel());
+
+    // Pointer events (for browser DevTools touch emulation — Firefox/Chrome RDM)
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch' || this._hasRealTouch) return;
+      e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+      this._pointerTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this._handleTouchStart(Array.from(this._pointerTouches.values()));
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch' || this._hasRealTouch) return;
+      if (!this._pointerTouches.has(e.pointerId)) return;
+      e.preventDefault();
+      this._pointerTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this._handleTouchMove(Array.from(this._pointerTouches.values()));
+    });
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || this._hasRealTouch) return;
+      if (!this._pointerTouches.has(e.pointerId)) return;
+      const changed = { x: e.clientX, y: e.clientY };
+      this._pointerTouches.delete(e.pointerId);
+      this._handleTouchEnd(Array.from(this._pointerTouches.values()), [changed]);
+    };
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', (e) => {
+      if (e.pointerType !== 'touch' || this._hasRealTouch) return;
+      this._pointerTouches.clear();
+      this._handleTouchCancel();
+    });
+  }
+
+  // ====================== Touch gesture handlers ======================
+
+  private _handleTouchStart(touches: { x: number; y: number }[]): void {
+    this.camera.stopInertia();
+    this._touchCount = touches.length;
+    this._touchGesture = null;
+
+    if (touches.length === 1) {
+      this._lastTouchPos.set(touches[0].x, touches[0].y);
+      this._touchStartPos.set(touches[0].x, touches[0].y);
+      this._touchStartTime = performance.now();
+      this._touchDragChecked = false;
+      this._mousePos.set(touches[0].x, touches[0].y);
+      this._mouseNDC.set(
+        (touches[0].x / window.innerWidth) * 2 - 1,
+        -(touches[0].y / window.innerHeight) * 2 + 1,
+      );
+    } else if (touches.length === 2) {
+      const dx = touches[1].x - touches[0].x;
+      const dy = touches[1].y - touches[0].y;
+      this._lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+      this._lastTwoTouchCenter.set(
+        (touches[0].x + touches[1].x) / 2,
+        (touches[0].y + touches[1].y) / 2,
+      );
+    }
+  }
+
+  private _handleTouchMove(touches: { x: number; y: number }[]): void {
+    const count = touches.length;
+    if (count > 2) return;
+
+    // Detect finger count changes mid-gesture
+    if (count !== this._touchCount) {
+      if (count === 1) {
+        // 2→1 transition: reinitialize single-finger state
+        this._lastTouchPos.set(touches[0].x, touches[0].y);
+        this._touchDragChecked = true; // don't re-check observer/scrub after pinch
+      } else if (count === 2) {
+        // 1→2 transition: initialize pinch/pan state
+        const tdx = touches[1].x - touches[0].x;
+        const tdy = touches[1].y - touches[0].y;
+        this._lastPinchDist = Math.sqrt(tdx * tdx + tdy * tdy);
+        this._lastTwoTouchCenter.set(
+          (touches[0].x + touches[1].x) / 2,
+          (touches[0].y + touches[1].y) / 2,
+        );
+      }
+      this._touchCount = count;
+      this._touchGesture = null;
+      return; // skip this frame to avoid jumps
+    }
+
+    if (count === 1) {
+      // Single finger: orbit (3D) or pan (2D)
+      const tx = touches[0].x, ty = touches[0].y;
+      const dx = tx - this._lastTouchPos.x;
+      const dy = ty - this._lastTouchPos.y;
+      this._lastTouchPos.set(tx, ty);
+      this._mousePos.set(tx, ty);
+      this._mouseNDC.set(
+        (tx / window.innerWidth) * 2 - 1,
+        -(ty / window.innerHeight) * 2 + 1,
+      );
+
+      // Observer drag / orbit scrub detection
+      if (!this._touchDragChecked && !this._isDraggingObserver && !this._isDraggingOrbit) {
+        const dist = this._touchStartPos.distanceTo(this._lastTouchPos);
+        if (dist > 8) {
+          this._isDraggingObserver = this.cb.tryStartObserverDrag();
+          if (!this._isDraggingObserver) {
+            this._isDraggingOrbit = this.cb.tryStartOrbitScrub();
+          }
+          this._touchDragChecked = true;
+        }
+      }
+
+      if (this._isDraggingObserver) { this.cb.onObserverDrag(); return; }
+      if (this._isDraggingOrbit) { this.cb.onOrbitScrub(); return; }
+
+      if (this.cb.getViewMode() === ViewMode.VIEW_2D) {
+        this.camera.pan2dWithVelocity(dx, dy);
+        this.cb.clearTargetLock();
+      } else {
+        this.camera.orbitWithVelocity(dx, dy);
+      }
+    } else if (count === 2) {
+      // Two fingers: pinch zoom and/or pan
+      const tdx = touches[1].x - touches[0].x;
+      const tdy = touches[1].y - touches[0].y;
+      const pinchDist = Math.sqrt(tdx * tdx + tdy * tdy);
+      const centerX = (touches[0].x + touches[1].x) / 2;
+      const centerY = (touches[0].y + touches[1].y) / 2;
+
+      // Gesture disambiguation: lock into dominant gesture
+      if (this._touchGesture === null && this._lastPinchDist > 0) {
+        const pinchDelta = Math.abs(pinchDist - this._lastPinchDist);
+        const panDelta = Math.sqrt(
+          (centerX - this._lastTwoTouchCenter.x) ** 2 +
+          (centerY - this._lastTwoTouchCenter.y) ** 2,
+        );
+        if (pinchDelta > 5 || panDelta > 5) {
+          this._touchGesture = pinchDelta > panDelta ? 'pinch' : 'pan';
+        }
+      }
+
+      // Pinch zoom (suppressed if gesture locked to pan)
+      if (this._touchGesture !== 'pan' && this._lastPinchDist > 0) {
+        const scale = pinchDist / this._lastPinchDist;
+        if (this.cb.getViewMode() === ViewMode.VIEW_2D) {
+          this.camera.pinchZoom2d(scale);
+        } else {
+          this.camera.pinchZoom3d(scale, this.cb.getMinZoom());
+        }
+      }
+
+      // Two-finger pan (suppressed if gesture locked to pinch)
+      if (this._touchGesture !== 'pinch') {
+        const panDx = centerX - this._lastTwoTouchCenter.x;
+        const panDy = centerY - this._lastTwoTouchCenter.y;
+        if (this.cb.getViewMode() === ViewMode.VIEW_3D) {
+          this.camera.pan3dWithVelocity(panDx, panDy);
+        } else {
+          this.camera.pan2dWithVelocity(panDx, panDy);
+        }
+        this.cb.clearTargetLock();
+      }
+
+      this._lastPinchDist = pinchDist;
+      this._lastTwoTouchCenter.set(centerX, centerY);
+    }
+  }
+
+  private _handleTouchEnd(remaining: { x: number; y: number }[], changed: { x: number; y: number }[]): void {
+    if (remaining.length === 0) {
+      // All fingers up
+      if (this._isDraggingObserver) { this._isDraggingObserver = false; }
+      else if (this._isDraggingOrbit) { this._isDraggingOrbit = false; }
+      else {
+        // Tap detection (distance + time threshold)
+        const touchDist = this._touchStartPos.distanceTo(
+          new THREE.Vector2(changed[0].x, changed[0].y),
+        );
+        const touchDuration = performance.now() - this._touchStartTime;
+        const isTap = this._touchCount === 1 && touchDist < 12 && touchDuration < 400;
+
+        if (isTap) {
+          if (this.cb.getOrreryMode()) {
+            this.cb.onOrreryClick();
+          } else {
+            this.cb.onSelect();
+            // Double tap detection
+            const now = performance.now() / 1000;
+            if (now - this._lastLeftClickTime < 0.3) {
+              if (this.cb.getViewMode() === ViewMode.VIEW_3D) {
+                this.cb.onDoubleClick3D();
+              } else {
+                this.cb.onDoubleClick2D();
+              }
+            }
+            this._lastLeftClickTime = now;
+          }
+        } else {
+          // Not a tap — start inertia
+          this.camera.startInertia();
+        }
+      }
+    } else if (remaining.length === 1 && this._touchCount === 2) {
+      // 2→1 transition: reinitialize for single-finger orbit
+      this._lastTouchPos.set(remaining[0].x, remaining[0].y);
+      this._touchGesture = null;
+    }
+
+    this._touchCount = remaining.length;
+    this._lastPinchDist = 0;
+  }
+
+  private _handleTouchCancel(): void {
+    this._touchCount = 0;
+    this._lastPinchDist = 0;
+    this._isDraggingObserver = false;
+    this._isDraggingOrbit = false;
+    this._touchGesture = null;
   }
 }

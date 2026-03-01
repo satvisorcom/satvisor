@@ -67,8 +67,14 @@ npm run build
 
 Output goes to `dist/`, deployable to any static host.
 
-## Attribution
+## Credits
 
-Based on [TLEscope](https://github.com/aweeri/TLEscope) by [aweeri](https://github.com/aweeri). TLE data from [CelesTrak](https://celestrak.org). Satellite metadata from [SatNOGS](https://satnogs.org). Moon textures from [NASA SVS CGI Moon Kit](https://svs.gsfc.nasa.gov/4720/). Planet textures from [Solar System Scope](https://www.solarsystemscope.com/textures/).
+- TLE data from [CelesTrak](https://celestrak.org)
+- Satellite metadata from [SatNOGS](https://satnogs.org)
+- Moon textures from [NASA SVS CGI Moon Kit](https://svs.gsfc.nasa.gov/4720/)
+- Planet textures from [Solar System Scope](https://www.solarsystemscope.com/textures/)
+- Inspired by [TLEscope](https://github.com/aweeri/TLEscope) by [aweeri](https://github.com/aweeri)
 
-Licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html).
+## License
+
+[AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html)

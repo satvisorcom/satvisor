@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { uiStore } from '../stores/ui.svelte';
   import TopPanel from './TopPanel.svelte';
   import StatsPanel from './StatsPanel.svelte';
   import TlePicker from './TlePicker.svelte';
+  import MobileNav from './MobileNav.svelte';
   import SatInfo from './SatInfo.svelte';
   import ApsisLabels from './ApsisLabels.svelte';
   import PassMarkers from './PassMarkers.svelte';
@@ -20,16 +23,27 @@
   import PassFilterWindow from './PassFilterWindow.svelte';
   import ThemeEditorWindow from './ThemeEditorWindow.svelte';
   import SatDatabaseWindow from './SatDatabaseWindow.svelte';
+
+  onMount(() => {
+    uiStore.updateMobileState();
+    const onResize = () => uiStore.updateMobileState();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  });
 </script>
 
 <div id="ui-overlay">
   <TopPanel />
   <StatsPanel />
-  <TlePicker />
+  {#if uiStore.isMobile}
+    <MobileNav />
+  {:else}
+    <TlePicker />
+    <BottomPanel />
+  {/if}
   <SatInfo />
   <ApsisLabels />
   <PassMarkers />
-  <BottomPanel />
   <InfoModal />
   <SettingsWindow />
   <ObserverWindow />

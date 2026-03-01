@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Select from './shared/Select.svelte';
   import Button from './shared/Button.svelte';
   import Input from './shared/Input.svelte';
@@ -398,6 +399,25 @@
     return pass.aosEpoch + t * (pass.losEpoch - pass.aosEpoch);
   }
 
+  function scrubFromEvent(e: PointerEvent) {
+    if (!canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
+    const cssX = e.clientX - rect.left;
+    const ep = xToEpoch(cssX);
+    if (ep !== null) timeStore.epoch = ep;
+  }
+
+  function onWindowPointerMove(e: PointerEvent) {
+    e.preventDefault();
+    scrubFromEvent(e);
+  }
+
+  function onWindowPointerUp() {
+    scrubbing = false;
+    window.removeEventListener('pointermove', onWindowPointerMove);
+    window.removeEventListener('pointerup', onWindowPointerUp);
+  }
+
   function onCanvasPointerDown(e: PointerEvent) {
     if (e.button !== 0 || !selectedPass || cachedData.length === 0) return;
     const rect = canvasEl!.getBoundingClientRect();
@@ -407,7 +427,8 @@
     // Only start scrubbing if clicking within the graph area
     if (lx < G_LEFT || lx > CANVAS_W - G_RIGHT) return;
     scrubbing = true;
-    canvasEl!.setPointerCapture(e.pointerId);
+    window.addEventListener('pointermove', onWindowPointerMove);
+    window.addEventListener('pointerup', onWindowPointerUp);
     const ep = xToEpoch(cssX);
     if (ep !== null) {
       timeStore.epoch = ep;
@@ -417,22 +438,14 @@
   }
 
   function onCanvasPointerMove(e: PointerEvent) {
-    if (!canvasEl) return;
+    if (!canvasEl || scrubbing) return;
     const rect = canvasEl.getBoundingClientRect();
     const cssX = e.clientX - rect.left;
-    if (scrubbing) {
-      const ep = xToEpoch(cssX);
-      if (ep !== null) timeStore.epoch = ep;
-    }
     hoverX = cssX;
     // Cursor feedback
     const scaleX = CANVAS_W / rect.width;
     const lx = cssX * scaleX;
     canvasEl.style.cursor = (selectedPass && cachedData.length > 0 && lx >= G_LEFT && lx <= CANVAS_W - G_RIGHT) ? 'grab' : '';
-  }
-
-  function onCanvasPointerUp() {
-    scrubbing = false;
   }
 
   function onCanvasPointerLeave() {
@@ -553,7 +566,7 @@
 </script>
 
 {#snippet dopplerIcon()}<span class="title-icon">{@html ICON_DOPPLER}</span>{/snippet}
-<DraggableWindow id="doppler" title="Doppler Shift" icon={dopplerIcon} bind:open={uiStore.dopplerWindowOpen} focus={uiStore.dopplerWindowFocus} initialX={200} initialY={150}>
+{#snippet windowContent()}
   <div class="dw">
     <div class="controls">
       <div class="freq-row">
@@ -590,16 +603,27 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <canvas
       bind:this={canvasEl}
+      style="touch-action:none"
       onpointerdown={onCanvasPointerDown}
       onpointermove={onCanvasPointerMove}
-      onpointerup={onCanvasPointerUp}
       onpointerleave={onCanvasPointerLeave}
     ></canvas>
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="doppler" title="Doppler Shift" icon={dopplerIcon}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="doppler" title="Doppler Shift" icon={dopplerIcon} bind:open={uiStore.dopplerWindowOpen} focus={uiStore.dopplerWindowFocus} initialX={200} initialY={150}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .dw { min-width: 380px; }
+  @media (max-width: 767px) { .dw { min-width: unset; width: 100%; } }
   .dw canvas { display: block; }
   .controls {
     display: flex;

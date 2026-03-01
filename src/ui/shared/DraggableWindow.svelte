@@ -227,9 +227,17 @@
 
   let ro: ResizeObserver | null = null;
 
-  // Track open state: bring to front + persist
+  // Track open state: bring to front, uncollapse on open, persist
+  let prevOpen = open;
   $effect(() => {
-    if (open) zIndex = ++topZ;
+    if (open && !prevOpen) {
+      zIndex = ++topZ;
+      collapsed = false;
+      if (winKey) localStorage.setItem(sKey('collapsed'), 'false');
+    } else if (open) {
+      zIndex = ++topZ;
+    }
+    prevOpen = open;
     if (winKey) localStorage.setItem(sKey('open'), String(open));
   });
 

@@ -16,16 +16,28 @@
   } = $props();
 
   let scrollTop = $state(0);
+  let viewportEl = $state<HTMLElement | null>(null);
+  let measuredHeight = $state(0);
 
   function onScroll(e: Event) {
     scrollTop = (e.target as HTMLElement).scrollTop;
   }
 
+  // Measure actual viewport height so CSS overrides (e.g. flex fill) work correctly
+  $effect(() => {
+    if (!viewportEl) return;
+    measuredHeight = viewportEl.clientHeight;
+    const ro = new ResizeObserver(() => { measuredHeight = viewportEl!.clientHeight; });
+    ro.observe(viewportEl);
+    return () => ro.disconnect();
+  });
+
+  let effectiveHeight = $derived(measuredHeight > 0 ? measuredHeight : maxHeight);
   let winStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - buffer));
-  let winEnd = $derived(Math.min(items.length, winStart + Math.ceil(maxHeight / rowHeight) + 2 * buffer));
+  let winEnd = $derived(Math.min(items.length, winStart + Math.ceil(effectiveHeight / rowHeight) + 2 * buffer));
 </script>
 
-<div class="vl-viewport" style="max-height:{maxHeight}px" onscroll={onScroll}>
+<div class="vl-viewport" bind:this={viewportEl} style="max-height:{maxHeight}px" onscroll={onScroll}>
   {#if winStart > 0}<div style="height:{winStart * rowHeight}px"></div>{/if}
   {#each items.slice(winStart, winEnd) as item, j (winStart + j)}
     {@render row(item, winStart + j)}

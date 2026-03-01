@@ -19,6 +19,8 @@ export const ICON_3D = '<svg viewBox="0 0 16 16" fill="currentColor" stroke="non
 
 export const ICON_2D = '<svg viewBox="0 0 16 16" fill="currentColor" stroke="none"><text x="8" y="12" font-size="11" font-weight="bold" font-family="sans-serif" text-anchor="middle">2D</text></svg>';
 
+export const ICON_RTX = '<svg viewBox="0 0 24 16" fill="currentColor" stroke="none"><text x="12" y="12" font-size="11" font-weight="bold" font-family="sans-serif" text-anchor="middle">RTX</text></svg>';
+
 export const ICON_PASSES = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 14V8"/><path d="M4 12l4-4 4 4"/><path d="M3 4.5a7 7 0 0 1 10 0"/><path d="M5.5 6.5a4 4 0 0 1 5 0"/></svg>';
 
 export const ICON_POLAR = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3"/><line x1="8" y1="2" x2="8" y2="14"/><line x1="2" y1="8" x2="14" y2="8"/></svg>';
@@ -39,4 +41,8 @@ export const ICON_THEME = '<svg viewBox="0 0 16 16" fill="none" stroke="currentC
 
 export const ICON_CLOSE = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>';
 
+export const ICON_BACK = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2L3.5 6l4 4"/></svg>';
+
 export const ICON_DATABASE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="8" cy="4" rx="6" ry="2.5"/><path d="M2 4v8c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5V4"/><path d="M2 8c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5"/></svg>';
+
+export const ICON_MORE = '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>';

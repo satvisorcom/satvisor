@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Checkbox from './shared/Checkbox.svelte';
   import Button from './shared/Button.svelte';
   import Input from './shared/Input.svelte';
@@ -84,7 +85,16 @@
 </script>
 
 {#snippet dsIcon()}<span class="title-icon">{@html ICON_DATA_SOURCES}</span>{/snippet}
-<DraggableWindow id="data-sources" title="Data Sources" icon={dsIcon} bind:open={uiStore.dataSourcesOpen} initialX={10} initialY={260}>
+{#snippet dsFooter()}
+  {#if sourcesStore.loading}
+    <span class="footer-text">Loading...</span>
+  {:else}
+    <span class="footer-text">
+      {sourcesStore.totalSats} sats loaded{#if sourcesStore.dupsRemoved > 0} ({sourcesStore.dupsRemoved} dups removed){/if}
+    </span>
+  {/if}
+{/snippet}
+{#snippet windowContent()}
   <div class="ds-content">
     <Input
       class="filter-input"
@@ -156,18 +166,21 @@
         </div>
       {/if}
     </div>
-
-    <div class="footer">
-      {#if sourcesStore.loading}
-        <span class="footer-text">Loading...</span>
-      {:else}
-        <span class="footer-text">
-          {sourcesStore.totalSats} sats loaded{#if sourcesStore.dupsRemoved > 0} ({sourcesStore.dupsRemoved} dups removed){/if}
-        </span>
-      {/if}
-    </div>
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="sources" title="Data Sources" icon={dsIcon} footer={dsFooter}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="data-sources" title="Data Sources" icon={dsIcon} bind:open={uiStore.dataSourcesOpen} initialX={10} initialY={260}>
+    {@render windowContent()}
+    <div class="footer">
+      {@render dsFooter()}
+    </div>
+  </DraggableWindow>
+{/if}
 
 <style>
   .ds-content {
@@ -175,6 +188,9 @@
     flex-direction: column;
     gap: 10px;
     width: 260px;
+  }
+  @media (max-width: 767px) {
+    .ds-content { width: 100%; }
   }
   :global(.filter-input) { width: 100%; }
   .filter-count { color: var(--text-faint); font-size: 10px; }

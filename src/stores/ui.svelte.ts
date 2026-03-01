@@ -1,13 +1,15 @@
 import type { Satellite, SelectedSatInfo } from '../types';
 import type { SatellitePass } from '../passes/pass-types';
 import { ViewMode } from '../types';
+import { MOBILE_BREAKPOINT } from '../constants';
 
 class UIStore {
   // Satellite state
   hoveredSat = $state<Satellite | null>(null);
   fpsDisplay = $state(0);
   fpsColor = $state('#00ff00');
-  satStatusText = $state('');
+  satCount = $state(0);
+  satStatusExtra = $state('');
   tleLoadState = $state<'fresh' | 'cached' | 'stale' | 'failed' | 'none'>('none');
   cursorLatLon = $state<{ lat: number; lon: number } | null>(null);
 
@@ -160,6 +162,44 @@ class UIStore {
   earthTogglesVisible = $state(true);
   nightToggleVisible = $state(true);
 
+  // Mobile
+  isMobile = $state(false);
+  activeMobileSheet = $state<string | null>(null);
+  private _mobileSheetStack: string[] = [];
+  /** When true, sheet transitions should be instant (sheet-to-sheet swap) */
+  skipSheetTransition = $state(false);
+
+  updateMobileState() {
+    this.isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+    if (!this.isMobile) { this.activeMobileSheet = null; this._mobileSheetStack = []; }
+  }
+
+  /** Nav tabs use this — clears stack, toggles sheet */
+  switchMobileSheet(id: string) {
+    const isSwap = this.activeMobileSheet !== null && this.activeMobileSheet !== id;
+    this.skipSheetTransition = isSwap;
+    this._mobileSheetStack = [];
+    this.activeMobileSheet = this.activeMobileSheet === id ? null : id;
+  }
+
+  /** Programmatic opens — preserves stack for back navigation */
+  openMobileSheet(id: string) {
+    this.skipSheetTransition = this.activeMobileSheet !== null;
+    if (this.activeMobileSheet && this.activeMobileSheet !== id) {
+      this._mobileSheetStack.push(this.activeMobileSheet);
+    }
+    this.activeMobileSheet = id;
+  }
+
+  /** Whether closing the current sheet will navigate back (vs fully close) */
+  get canGoBack() { return this._mobileSheetStack.length > 0; }
+
+  /** Close/swipe-dismiss — pops stack (returns to previous sheet) */
+  closeMobileSheet() {
+    this.skipSheetTransition = this._mobileSheetStack.length > 0;
+    this.activeMobileSheet = this._mobileSheetStack.pop() ?? null;
+  }
+
   // Callbacks registered by App
   onToggleChange: ((key: string, value: boolean) => void) | null = null;
   onMarkerGroupChange: ((groupId: string, visible: boolean) => void) | null = null;
@@ -191,7 +231,7 @@ class UIStore {
     this.showSkybox = load('threescope_skybox', true);
     this.showCountries = load('threescope_countries', false);
     this.showGrid = load('threescope_grid', false);
-    this.singleSelectMode = load('threescope_single_select', false);
+    this.singleSelectMode = load('threescope_single_select', this.isMobile);
     const savedTab = localStorage.getItem('threescope_passes_tab');
     if (savedTab === 'selected' || savedTab === 'nearby') this.passesTab = savedTab;
   }

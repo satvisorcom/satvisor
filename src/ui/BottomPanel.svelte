@@ -1,13 +1,13 @@
 <script lang="ts">
+  import { uiStore } from '../stores/ui.svelte';
+
+  const hash = __COMMIT_HASH__;
+  const version = __COMMIT_DATE__ ? 'v' + __COMMIT_DATE__.slice(2, 10).replace(/-/g, '') : '';
 </script>
 
 <div class="bottom-panel">
-  <div>
-    TLE data from <a href="https://celestrak.org" target="_blank">CelesTrak</a><br>
-    Based on <a href="https://github.com/aweeri/TLEscope" target="_blank">TLEscope</a> by aweeri
-    &middot; <a href="https://github.com/aweeri/TLEscope/blob/main/LICENSE" target="_blank">AGPL-3.0</a>
-    &middot; <a href="https://github.com/sandrwich/threescope" target="_blank">Source code</a>
-  </div>
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <span class="about-link" onclick={() => uiStore.infoModalOpen = true}>threescope{#if version}<span class="dot">&middot;</span><span class="build">{version}</span>{/if}{#if hash}<span class="dot">&middot;</span><span class="build">{hash}</span>{/if}</span>
 </div>
 
 <style>
@@ -19,10 +19,11 @@
     line-height: 1.4;
     color: var(--scene-text-dim);
   }
-  .bottom-panel :global(a) {
-    color: var(--scene-text-dim);
-    text-decoration: none;
+  .about-link {
+    cursor: pointer;
     pointer-events: auto;
   }
-  .bottom-panel :global(a:hover) { color: var(--scene-text); }
+  .about-link:hover { color: var(--scene-text); }
+  .dot { padding: 0 4px; }
+  .build { opacity: 0.5; }
 </style>

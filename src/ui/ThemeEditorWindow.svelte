@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Select from './shared/Select.svelte';
   import Input from './shared/Input.svelte';
   import Button from './shared/Button.svelte';
@@ -93,7 +94,7 @@
 </script>
 
 {#snippet themeIcon()}<span class="title-icon">{@html ICON_THEME}</span>{/snippet}
-<DraggableWindow id="theme-editor" title="Theme Editor" icon={themeIcon} bind:open={uiStore.themeEditorOpen} initialX={300} initialY={200}>
+{#snippet windowContent()}
   <div class="te-content">
     <div class="theme-list">
       {#each themeStore.allThemes as theme}
@@ -163,7 +164,17 @@
       <div class="builtin-note">Clone a theme to customize colors</div>
     {/if}
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="theme-editor" title="Theme Editor" icon={themeIcon}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="theme-editor" title="Theme Editor" icon={themeIcon} bind:open={uiStore.themeEditorOpen} initialX={300} initialY={200}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .te-content {
@@ -171,6 +182,9 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+  @media (max-width: 767px) {
+    .te-content { width: 100%; }
   }
 
   .theme-list {

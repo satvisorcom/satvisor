@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import { timeStore } from '../stores/time.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { epochToUnix, unixToEpoch } from '../astro/epoch';
@@ -70,7 +71,7 @@
       case 'min':   date.setUTCMinutes(date.getUTCMinutes() + delta); break;
       case 'sec':   date.setUTCSeconds(date.getUTCSeconds() + delta); break;
     }
-    timeStore.setEpochFromDate(date);
+    timeStore.snapToDate(date);
   }
 
   function startEdit(field: string, currentVal: number, w = 2) {
@@ -92,7 +93,7 @@
     // Build date with the edited field replaced
     const parts = { year, month, day, hour, min, sec, [field]: val };
     const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.min, parts.sec));
-    timeStore.setEpochFromDate(date);
+    timeStore.snapToDate(date);
   }
 
   function onEditKeydown(e: KeyboardEvent) {
@@ -105,8 +106,98 @@
 
   const pad = (n: number, w = 2) => String(n).padStart(w, '0');
 
-  const upArrow = '<svg viewBox="0 0 10 6" width="10" height="6" fill="currentColor"><polygon points="5,0 10,6 0,6"/></svg>';
-  const downArrow = '<svg viewBox="0 0 10 6" width="10" height="6" fill="currentColor"><polygon points="0,0 10,0 5,6"/></svg>';
+  // ─── Time scrub strip ───────────────────────────────────────
+  let scrubbing = $state(false);
+  let scrubOffset = $state(0); // -1 to 1
+  let scrubStripEl: HTMLDivElement | undefined = $state();
+  let preScrubMultiplier = 1;
+  let preScrubPaused = false;
+
+  function scrubMultiplierFromOffset(offset: number): number {
+    // Dead zone near center (< 5% of half-width)
+    const abs = Math.abs(offset);
+    if (abs < 0.05) return 0;
+    // Exponential: 1x at edge of dead zone → ~131000x at edge
+    // Map 0.05..1.0 → 0..1, then 2^(t*17)
+    const t = (abs - 0.05) / 0.95;
+    const mult = Math.pow(2, t * 17);
+    return offset < 0 ? -mult : mult;
+  }
+
+  function scrubSpeedLabel(offset: number): string {
+    const mult = scrubMultiplierFromOffset(offset);
+    if (mult === 0) return '1x';
+    const sign = mult < 0 ? '-' : '';
+    return `${sign}${Math.round(Math.abs(mult))}x`;
+  }
+
+  function onScrubStart(e: PointerEvent) {
+    if (!scrubStripEl) return;
+    e.preventDefault();
+    scrubbing = true;
+    preScrubMultiplier = timeStore.multiplier;
+    preScrubPaused = timeStore.paused;
+
+    updateScrubOffset(e.clientX);
+    window.addEventListener('pointermove', onScrubMove);
+    window.addEventListener('pointerup', onScrubEnd);
+  }
+
+  function onScrubMove(e: PointerEvent) {
+    e.preventDefault();
+    updateScrubOffset(e.clientX);
+  }
+
+  function updateScrubOffset(clientX: number) {
+    if (!scrubStripEl) return;
+    const rect = scrubStripEl.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    const halfWidth = rect.width / 2;
+    scrubOffset = Math.max(-1, Math.min(1, (clientX - center) / halfWidth));
+
+    const mult = scrubMultiplierFromOffset(scrubOffset);
+    if (mult === 0) {
+      timeStore.multiplier = preScrubMultiplier;
+      timeStore.paused = true;
+    } else {
+      timeStore.multiplier = mult;
+      timeStore.paused = false;
+    }
+  }
+
+  function onScrubEnd() {
+    scrubbing = false;
+    scrubOffset = 0;
+    timeStore.multiplier = preScrubMultiplier;
+    timeStore.paused = preScrubPaused;
+    window.removeEventListener('pointermove', onScrubMove);
+    window.removeEventListener('pointerup', onScrubEnd);
+  }
+
+  // ─── Native datetime picker (mobile) ──────────────────────
+  let datePickerEl: HTMLInputElement | undefined = $state();
+
+  function datePickerValue(): string {
+    // Format as YYYY-MM-DDTHH:MM:SS for datetime-local input
+    return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(min)}:${pad(sec)}`;
+  }
+
+  function onDatePickerChange(e: Event) {
+    const val = (e.target as HTMLInputElement).value;
+    if (!val) return;
+    // datetime-local gives YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS
+    const date = new Date(val + 'Z'); // treat as UTC
+    if (!isNaN(date.getTime())) {
+      timeStore.setEpochFromDate(date);
+    }
+  }
+
+  function openDatePicker() {
+    if (datePickerEl) {
+      datePickerEl.value = datePickerValue();
+      try { datePickerEl.showPicker(); } catch { datePickerEl.click(); }
+    }
+  }
 </script>
 
 {#snippet nudgeGroup(field: string, value: number, label: string, wide?: boolean)}
@@ -135,33 +226,89 @@
 {/snippet}
 
 {#snippet timeIcon()}<span class="title-icon">{@html ICON_TIME}</span>{/snippet}
-<DraggableWindow id="time-control" title="Time Control" icon={timeIcon} bind:open={uiStore.timeWindowOpen} initialX={10} initialY={34}>
-  <div class="tc">
-    <div class="transport-row">
-      <button class="tb" title="Slower (,)" onclick={() => timeStore.stepBackward()}>
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="8,2 1,8 8,14"/><polygon points="15,2 8,8 15,14"/></svg>
-      </button>
-      <button class="tb play" title="Play/Pause (Space)" onclick={() => timeStore.togglePause()}>
-        {#if timeStore.paused}
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="3,1 14,8 3,15"/></svg>
-        {:else}
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><rect x="2" y="1" width="4" height="14"/><rect x="10" y="1" width="4" height="14"/></svg>
-        {/if}
-      </button>
-      <button class="tb" title="Reset speed (/)" onclick={() => timeStore.resetSpeed()}>
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><rect x="2" y="2" width="12" height="12"/></svg>
-      </button>
-      <button class="tb" title="Faster (.)" onclick={() => timeStore.stepForward()}>
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="1,2 8,8 1,14"/><polygon points="8,2 15,8 8,14"/></svg>
-      </button>
-      <span class="speed" class:negative={timeStore.multiplier < 0} class:paused={timeStore.paused}>
-        {timeStore.displaySpeed}
-      </span>
-      {#if timeStore.isRealtime}
-        <span class="rt-dot" title="Real time"></span>
+
+{#snippet transportRow()}
+  <div class="transport-row">
+    <button class="tb" title="Slower (,)" onclick={() => timeStore.stepBackward()}>
+      <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="8,2 1,8 8,14"/><polygon points="15,2 8,8 15,14"/></svg>
+    </button>
+    <button class="tb play" title="Play/Pause (Space)" onclick={() => timeStore.togglePause()}>
+      {#if timeStore.paused}
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="3,1 14,8 3,15"/></svg>
+      {:else}
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><rect x="2" y="1" width="4" height="14"/><rect x="10" y="1" width="4" height="14"/></svg>
       {/if}
-      <button class="now-btn" onclick={() => timeStore.jumpToNow()}>Now</button>
+    </button>
+    <button class="tb" title="Reset speed (/)" onclick={() => timeStore.resetSpeed()}>
+      <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><rect x="2" y="2" width="12" height="12"/></svg>
+    </button>
+    <button class="tb" title="Faster (.)" onclick={() => timeStore.stepForward()}>
+      <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="1,2 8,8 1,14"/><polygon points="8,2 15,8 8,14"/></svg>
+    </button>
+    <span class="speed" class:negative={timeStore.multiplier < 0} class:paused={timeStore.paused}>
+      {timeStore.displaySpeed}
+    </span>
+    {#if timeStore.isRealtime}
+      <span class="rt-dot" title="Real time"></span>
+    {/if}
+    <button class="now-btn" onclick={() => timeStore.jumpToNow()}>Now</button>
+  </div>
+{/snippet}
+
+{#snippet scrubStrip()}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="scrub-strip" bind:this={scrubStripEl} onpointerdown={onScrubStart} style="touch-action:none">
+    <div class="scrub-track">
+      <div class="scrub-center-line"></div>
+      {#if scrubbing}
+        <div
+          class="scrub-fill"
+          class:reverse={scrubOffset < 0}
+          style="left:{scrubOffset < 0 ? (50 + scrubOffset * 50) : 50}%; width:{Math.abs(scrubOffset) * 50}%"
+        ></div>
+      {/if}
     </div>
+    <div class="scrub-labels">
+      <span class="scrub-hint">&#9664; REW</span>
+      {#if scrubbing}
+        <span class="scrub-speed">{scrubSpeedLabel(scrubOffset)}</span>
+      {:else}
+        <span class="scrub-speed-idle">drag to scrub</span>
+      {/if}
+      <span class="scrub-hint">FF &#9654;</span>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet mobileContent()}
+  <div class="tc tc-mobile">
+    {@render transportRow()}
+
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div class="mobile-datetime" onclick={openDatePicker}>
+      <span class="mobile-date">{year}-{pad(month)}-{pad(day)}</span>
+      <span class="mobile-time">{pad(hour)}:{pad(min)}:{pad(sec)}</span>
+      <span class="mobile-utc">UTC</span>
+    </div>
+    <input
+      bind:this={datePickerEl}
+      type="datetime-local"
+      step="1"
+      class="date-picker-hidden"
+      onchange={onDatePickerChange}
+    >
+
+    {@render scrubStrip()}
+
+    {#if timeStore.tleWarning}
+      <div class="warning">{timeStore.tleWarning}</div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet desktopContent()}
+  <div class="tc">
+    {@render transportRow()}
 
     <div class="nudge-row">
       {@render nudgeGroup('year', year, 'yr', true)}
@@ -173,6 +320,8 @@
       {@render nudgeGroup('sec', sec, 'sc')}
       <span class="utc-label">UTC</span>
     </div>
+
+    {@render scrubStrip()}
 
     {#if timeStore.tleWarning}
       <div class="warning">{timeStore.tleWarning}</div>
@@ -208,7 +357,17 @@
       </div>
     {/if}
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="time" title="Time Control" icon={timeIcon}>
+    {@render mobileContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="time-control" title="Time Control" icon={timeIcon} bind:open={uiStore.timeWindowOpen} initialX={10} initialY={34}>
+    {@render desktopContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .tc {
@@ -217,6 +376,7 @@
     gap: 10px;
     min-width: 240px;
   }
+  .tc-mobile { min-width: unset; }
   .transport-row {
     display: flex;
     align-items: center;
@@ -266,6 +426,7 @@
   }
   .now-btn:hover { border-color: var(--border-hover); color: var(--text-dim); }
 
+  /* ─── Desktop nudge row ─── */
   .nudge-row {
     display: flex;
     align-items: flex-start;
@@ -324,6 +485,8 @@
     margin-top: 1px;
     margin-bottom: 6px;
   }
+
+  /* ─── Desktop epoch footer ─── */
   .epoch-footer {
     border-top: 1px solid var(--border);
     margin: 0 -14px -12px;
@@ -381,5 +544,92 @@
   .warning {
     font-size: 11px;
     color: var(--warning);
+  }
+
+  /* ─── Mobile datetime display ─── */
+  .mobile-datetime {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 0;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--ui-bg);
+  }
+  .mobile-datetime:active { border-color: var(--border-hover); }
+  .mobile-date {
+    font-size: 15px;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .mobile-time {
+    font-size: 15px;
+    color: var(--text-dim);
+  }
+  .mobile-utc {
+    font-size: 10px;
+    color: var(--text-ghost);
+    letter-spacing: 0.5px;
+  }
+  .date-picker-hidden {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    height: 0;
+  }
+
+  /* ─── Time scrub strip ─── */
+  .scrub-strip {
+    padding: 0 0 10px;
+    cursor: ew-resize;
+    user-select: none;
+  }
+  .scrub-track {
+    position: relative;
+    height: 24px;
+    background: var(--ui-bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .scrub-center-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--text-ghost);
+  }
+  .scrub-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--accent);
+    opacity: 0.3;
+  }
+  .scrub-fill.reverse {
+    background: var(--warning-bright);
+  }
+  .scrub-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 2px 0;
+  }
+  .scrub-hint {
+    font-size: 9px;
+    color: var(--text-ghost);
+    letter-spacing: 0.5px;
+  }
+  .scrub-speed {
+    font-size: 11px;
+    color: var(--text);
+    font-weight: bold;
+  }
+  .scrub-speed-idle {
+    font-size: 9px;
+    color: var(--text-ghost);
+    letter-spacing: 0.5px;
   }
 </style>

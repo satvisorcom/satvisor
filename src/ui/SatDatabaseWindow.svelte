@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import VirtualList from './shared/VirtualList.svelte';
   import Button from './shared/Button.svelte';
   import Input from './shared/Input.svelte';
@@ -115,6 +116,7 @@
   function selectItem(noradId: number) {
     selectedId = noradId;
     uiStore.satDatabaseNoradId = noradId;
+    if (uiStore.isMobile) uiStore.openMobileSheet('sat-database-detail');
   }
 
   function addToSelection(noradId: number) {
@@ -126,6 +128,7 @@
   // ─── Detail view ────────────────────────────────────────────
 
   let entry = $derived(selectedId ? getSatnogsData(selectedId) : null);
+  let detailTitle = $derived(entry?.satellite?.name ?? (selectedId ? `#${selectedId}` : 'Detail'));
 
   let activeTx = $derived(entry?.transmitters ?? []);
 
@@ -177,6 +180,7 @@
   function useDoppler(freqHz: number) {
     uiStore.dopplerPrefillHz = freqHz;
     uiStore.dopplerWindowOpen = true;
+    if (uiStore.isMobile) uiStore.openMobileSheet('doppler');
   }
 
   // ─── Keyboard navigation in list ───────────────────────────
@@ -204,7 +208,172 @@
     <Button class="sdb-reset" size="xs" variant="ghost" onclick={clearFilters}>Reset</Button>
   {/if}
 {/snippet}
-<DraggableWindow id="sat-database" title="SatNOGS Database" icon={dbIcon} {headerExtra} bind:open={uiStore.satDatabaseOpen} initialX={200} initialY={100}>
+
+{#snippet listView()}
+  <div class="sdb">
+    <!-- Search -->
+    <div class="sdb-search-row">
+      <Input
+        class="sdb-search"
+        size="lg"
+        type="text"
+        placeholder="Search satellites..."
+        bind:value={searchQuery}
+        onkeydown={onSearchKeydown}
+        spellcheck="false"
+        autocomplete="off"
+      />
+    </div>
+
+    <!-- Filters -->
+    <div class="sdb-filters">
+      <div class="sdb-frow">
+        <span class="sdb-flabel">status</span>
+        {#each STATUSES as status}
+          <Button size="xs" active={filterStatuses.has(status)} onclick={() => toggleStatus(status)}>{STATUS_LABELS[status]}</Button>
+        {/each}
+        <span class="sdb-flabel">service</span>
+        <Button size="xs" active={filterService === 'Amateur'} onclick={() => toggleService('Amateur')}>Amateur</Button>
+        <Button size="xs" active={filterService === 'Meteorological'} onclick={() => toggleService('Meteorological')}>Meteo</Button>
+        <span class="sdb-flabel">data</span>
+        <Button size="xs" active={filterTle} onclick={() => filterTle = !filterTle}>Loaded TLE</Button>
+      </div>
+      <div class="sdb-frow">
+        <span class="sdb-flabel">freq</span>
+        <Input class="sdb-fnum" size="xs" type="number" min="0" max="50000" bind:value={freqMin} placeholder="Min" />
+        <span class="sdb-fsep-dash">&mdash;</span>
+        <Input class="sdb-fnum" size="xs" type="number" min="0" max="50000" bind:value={freqMax} placeholder="Max" />
+        <span class="sdb-funit">MHz</span>
+        {#each FREQ_PRESETS as p}
+          <Button size="xs" active={freqMin === p.min && freqMax === p.max} onclick={() => applyFreqPreset(p)}>{p.label}</Button>
+        {/each}
+      </div>
+    </div>
+
+    <!-- Satellite list -->
+    <div class="sdb-list">
+      <VirtualList items={searchResults} rowHeight={34} maxHeight={400} buffer={15}>
+        {#snippet row(sr)}
+          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+          <div class="sdb-list-item" class:active={sr.noradId === selectedId} onclick={() => selectItem(sr.noradId)}>
+            <div class="sdb-item-name">{sr.name}</div>
+            <div class="sdb-item-meta">
+              <span class="sdb-item-norad">#{sr.noradId}</span>
+              {#if sr.inTle}<span class="sdb-item-tle">TLE</span>{/if}
+              {#if sr.status}<span class="sdb-item-status" class:alive={sr.status === 'alive'} class:dead={sr.status === 'dead'}>{sr.status}</span>{/if}
+              {#each sr.bands as band}<span class="sdb-item-band">{band}</span>{/each}
+            </div>
+          </div>
+        {/snippet}
+        {#snippet footer()}
+          <div class="sdb-count">{searchResults.length} results</div>
+        {/snippet}
+      </VirtualList>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet detailActions()}
+  {#if !isInTle && availableSources.length > 0}
+    <div class="sdb-source-hint">
+      <span class="sdb-hint-text">Available in:</span>
+      {#each availableSources as src}
+        <Button size="xs" class={src.satCount >= 1000 ? 'sdb-hint-large' : ''} onclick={() => enableSource(src.id)} title="{src.name} ({src.satCount} sats){src.satCount >= 1000 ? ' — large source' : ''}">
+          {#if src.satCount >= 1000}<svg class="sdb-warn-icon" viewBox="0 0 12 12"><path d="M6 1L1 11h10z" fill="none" stroke="currentColor" stroke-width="1.2"/><text x="6" y="9.5" text-anchor="middle" fill="currentColor" font-size="7" font-weight="bold">!</text></svg>{/if}
+          {src.name}
+        </Button>
+      {/each}
+    </div>
+  {/if}
+  {#if isInTle && !isSelected}
+    <Button class="select-btn" onclick={() => addToSelection(selectedId!)}>Select Satellite</Button>
+  {/if}
+{/snippet}
+
+{#snippet detailView()}
+  <div class="sdb-detail">
+    {#if !selectedId}
+      <div class="sdb-detail-empty">Select a satellite</div>
+    {:else if !entry}
+      <div class="sdb-detail-empty">No SatNOGS data for #{selectedId}</div>
+    {:else}
+      {@const sat = entry.satellite}
+      <div class="sdb-detail-content">
+        {#if sat}
+          <div class="sat-header">
+            {#if sat.image}
+              <img class="sat-img" src={satnogsImageUrl(sat.image)} alt=""
+                onerror={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            {/if}
+            <div class="sat-meta">
+              {#if sat.name}
+                <div class="sat-name">{sat.name}</div>
+              {/if}
+              {#if sat.names}
+                <div class="sat-aliases">{sat.names}</div>
+              {/if}
+              <div class="sat-id-status">
+                <span class="sat-norad">#{selectedId}</span>
+                {#if sat.status}
+                  <span class="sat-status" class:alive={sat.status === 'alive'} class:dead={sat.status === 'dead'}>{sat.status}</span>
+                {/if}
+              </div>
+            </div>
+          </div>
+
+          <div class="info-grid">
+            {#if sat.launched}
+              <span class="il">Launched</span><span class="iv">{sat.launched}</span>
+            {/if}
+            {#if sat.countries}
+              <span class="il">{sat.countries.includes(',') ? 'Countries' : 'Country'}</span><span class="iv">{sat.countries}</span>
+            {/if}
+            {#if sat.operator}
+              <span class="il">Operator</span><span class="iv">{sat.operator}</span>
+            {/if}
+            {#if sat.website}
+              <span class="il">Website</span><span class="iv"><a href={sat.website} target="_blank" rel="noopener" class="ext-link">{truncUrl(sat.website)}</a></span>
+            {/if}
+          </div>
+        {/if}
+
+        {#if uiStore.isMobile}
+          <div class="sdb-detail-footer sdb-detail-footer-mobile">
+            {@render detailActions()}
+          </div>
+        {/if}
+
+        {#if activeTx.length > 0}
+          <div class="section-label">TRANSMITTERS ({activeTx.length})</div>
+          <div class="tx-list">
+            {#each activeTx as tx}
+              <div class="tx-row">
+                <span class="tx-freq">{formatFreqHz(tx.frequencyHz)}</span>
+                {#if tx.mode}<span class="tx-pill">{tx.mode}</span>{/if}
+                <span class="tx-desc">{tx.description}</span>
+                <Button size="xs" onclick={() => useDoppler(tx.frequencyHz)} title="Use in Doppler analysis">Use</Button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="sdb-detail-empty">No active transmitters</div>
+        {/if}
+
+        {#if sat?.satId}
+          <a class="satnogs-link" href={satnogsPageUrl(sat.satId)} target="_blank" rel="noopener">View on SatNOGS &rarr;</a>
+        {/if}
+      </div>
+
+      {#if !uiStore.isMobile}
+        <div class="sdb-detail-footer">
+          {@render detailActions()}
+        </div>
+      {/if}
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet windowContent()}
   <div class="sdb">
     <!-- Search -->
     <div class="sdb-search-row">
@@ -247,7 +416,6 @@
 
     <!-- Split: list + detail -->
     <div class="sdb-split">
-      <!-- Left: scrollable list -->
       <div class="sdb-list">
         <VirtualList items={searchResults} rowHeight={34} maxHeight={400} buffer={15}>
           {#snippet row(sr)}
@@ -268,100 +436,29 @@
         </VirtualList>
       </div>
 
-      <!-- Right: detail panel -->
-      <div class="sdb-detail">
-        {#if !selectedId}
-          <div class="sdb-detail-empty">Select a satellite</div>
-        {:else if !entry}
-          <div class="sdb-detail-empty">No SatNOGS data for #{selectedId}</div>
-        {:else}
-          {@const sat = entry.satellite}
-          <div class="sdb-detail-content">
-            {#if sat}
-              <div class="sat-header">
-                {#if sat.image}
-                  <img class="sat-img" src={satnogsImageUrl(sat.image)} alt=""
-                    onerror={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                {/if}
-                <div class="sat-meta">
-                  {#if sat.name}
-                    <div class="sat-name">{sat.name}</div>
-                  {/if}
-                  {#if sat.names}
-                    <div class="sat-aliases">{sat.names}</div>
-                  {/if}
-                  <div class="sat-id-status">
-                    <span class="sat-norad">#{selectedId}</span>
-                    {#if sat.status}
-                      <span class="sat-status" class:alive={sat.status === 'alive'} class:dead={sat.status === 'dead'}>{sat.status}</span>
-                    {/if}
-                  </div>
-                </div>
-              </div>
-
-              <div class="info-grid">
-                {#if sat.launched}
-                  <span class="il">Launched</span><span class="iv">{sat.launched}</span>
-                {/if}
-                {#if sat.countries}
-                  <span class="il">{sat.countries.includes(',') ? 'Countries' : 'Country'}</span><span class="iv">{sat.countries}</span>
-                {/if}
-                {#if sat.operator}
-                  <span class="il">Operator</span><span class="iv">{sat.operator}</span>
-                {/if}
-                {#if sat.website}
-                  <span class="il">Website</span><span class="iv"><a href={sat.website} target="_blank" rel="noopener" class="ext-link">{truncUrl(sat.website)}</a></span>
-                {/if}
-              </div>
-            {/if}
-
-            {#if activeTx.length > 0}
-              <div class="section-label">TRANSMITTERS ({activeTx.length})</div>
-              <div class="tx-list">
-                {#each activeTx as tx}
-                  <div class="tx-row">
-                    <span class="tx-freq">{formatFreqHz(tx.frequencyHz)}</span>
-                    {#if tx.mode}<span class="tx-pill">{tx.mode}</span>{/if}
-                    <span class="tx-desc">{tx.description}</span>
-                    <Button size="xs" onclick={() => useDoppler(tx.frequencyHz)} title="Use in Doppler analysis">Use</Button>
-                  </div>
-                {/each}
-              </div>
-            {:else}
-              <div class="sdb-detail-empty">No active transmitters</div>
-            {/if}
-
-            {#if sat?.satId}
-              <a class="satnogs-link" href={satnogsPageUrl(sat.satId)} target="_blank" rel="noopener">View on SatNOGS &rarr;</a>
-            {/if}
-          </div>
-
-          <div class="sdb-detail-footer">
-            {#if !isInTle && availableSources.length > 0}
-              <div class="sdb-source-hint">
-                <span class="sdb-hint-text">Available in:</span>
-                {#each availableSources as src}
-                  <Button size="xs" class={src.satCount >= 1000 ? 'sdb-hint-large' : ''} onclick={() => enableSource(src.id)} title="{src.name} ({src.satCount} sats){src.satCount >= 1000 ? ' — large source' : ''}">
-                    {#if src.satCount >= 1000}<svg class="sdb-warn-icon" viewBox="0 0 12 12"><path d="M6 1L1 11h10z" fill="none" stroke="currentColor" stroke-width="1.2"/><text x="6" y="9.5" text-anchor="middle" fill="currentColor" font-size="7" font-weight="bold">!</text></svg>{/if}
-                    {src.name}
-                  </Button>
-                {/each}
-              </div>
-            {/if}
-            {#if isInTle && !isSelected}
-              <Button class="select-btn" onclick={() => addToSelection(selectedId!)}>Select Satellite</Button>
-            {/if}
-          </div>
-        {/if}
-      </div>
+      {@render detailView()}
     </div>
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="sat-database" title="SatNOGS Database" icon={dbIcon} {headerExtra}>
+    {@render listView()}
+  </MobileSheet>
+  <MobileSheet id="sat-database-detail" title={detailTitle} icon={dbIcon}>
+    {@render detailView()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="sat-database" title="SatNOGS Database" icon={dbIcon} {headerExtra} bind:open={uiStore.satDatabaseOpen} initialX={200} initialY={100}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .sdb {
     width: 560px;
   }
+  /* mobile overrides are at the bottom of this style block */
 
   /* ── Search ────────────────────────────────────────── */
 
@@ -625,4 +722,31 @@
     text-decoration: none;
   }
   .satnogs-link:hover { color: var(--text-dim); text-decoration: underline; }
+
+  /* ── Mobile overrides ──────────────────────────────────── */
+  @media (max-width: 767px) {
+    .sdb {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sdb-list {
+      width: 100%;
+      border-right: none;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .sdb-list :global(.vl-viewport) {
+      max-height: none;
+    }
+    .sdb-detail { max-height: none; padding-left: 0; }
+    .sat-aliases { max-width: none; }
+    .sat-name { display: none; }
+    .sat-norad { font-size: 12px; color: var(--text-dim); }
+    .sdb-detail-footer-mobile { padding-top: 0; }
+    .sdb-detail-footer-mobile + .section-label { margin-top: 10px; }
+  }
 </style>

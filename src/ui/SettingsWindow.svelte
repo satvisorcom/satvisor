@@ -1,6 +1,7 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
   import { resetWindowLayout } from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import InfoTip from './shared/InfoTip.svelte';
   import Checkbox from './shared/Checkbox.svelte';
   import Select from './shared/Select.svelte';
@@ -82,7 +83,7 @@
 </script>
 
 {#snippet settIcon()}<span class="title-icon">{@html ICON_SETTINGS}</span>{/snippet}
-<DraggableWindow id="settings" title="Settings" icon={settIcon} bind:open={uiStore.settingsOpen} initialX={10} initialY={490}>
+{#snippet windowContent()}
   <h4 class="section-header">Graphics</h4>
   <div class="row">
     <label>Preset</label>
@@ -228,7 +229,7 @@
   {/if}
   <div class="row">
     <label>Theme</label>
-    <Button size="xs" onclick={() => uiStore.themeEditorOpen = !uiStore.themeEditorOpen}>
+    <Button size="xs" onclick={() => { uiStore.themeEditorOpen = !uiStore.themeEditorOpen; if (uiStore.isMobile) uiStore.openMobileSheet('theme-editor'); }}>
       {themeStore.activeTheme.name}
     </Button>
   </div>
@@ -236,8 +237,17 @@
     <label>Layout</label>
     <Button size="xs" onclick={resetWindowLayout}>Reset Window Positions</Button>
   </div>
+{/snippet}
 
-</DraggableWindow>
+{#if uiStore.isMobile}
+  <MobileSheet id="settings" title="Settings" icon={settIcon}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="settings" title="Settings" icon={settIcon} bind:open={uiStore.settingsOpen} initialX={10} initialY={490}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .section-header {

@@ -1,11 +1,24 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'child_process';
 
 const host = process.env.TAURI_DEV_HOST;
 
+function git(cmd: string): string {
+  try { return execSync(`git ${cmd}`, { encoding: 'utf-8' }).trim(); }
+  catch { return ''; }
+}
+
+const commitHash = git('rev-parse --short HEAD');
+const commitDate = git('log -1 --format=%ci');
+
 export default defineConfig({
   clearScreen: false,
+  define: {
+    __COMMIT_HASH__: JSON.stringify(commitHash),
+    __COMMIT_DATE__: JSON.stringify(commitDate),
+  },
   server: {
     port: 1420,
     strictPort: true,
@@ -20,7 +33,7 @@ export default defineConfig({
       manifest: {
         name: 'Threescope',
         short_name: 'Threescope',
-        description: 'Three.js satellite tracker - TLEscope port',
+        description: 'Real-time 3D/2D satellite tracker with pass predictions, orbit visualization, and Doppler analysis. Works on desktop and mobile.',
         theme_color: '#101010',
         background_color: '#101010',
         display: 'standalone',

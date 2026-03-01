@@ -27,3 +27,4 @@ export const SAT_COLORS: readonly [number, number, number][] = [
 export const J2 = 1.08263e-3;                  // Earth's J2 zonal harmonic
 export const EARTH_RADIUS_EQ_KM = 6378.137;    // WGS-84 equatorial radius (km)
 export const ORBIT_RECOMPUTE_INTERVAL_S = 900;  // recompute orbits every 15 sim-minutes
+export const MOBILE_BREAKPOINT = 768;

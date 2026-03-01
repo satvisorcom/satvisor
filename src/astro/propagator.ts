@@ -79,6 +79,7 @@ export function parseTLE(name: string, line1: string, line2: string): Satellite 
       stdMag: !isNaN(noradId) && String(noradId) in stdmagLookup
         ? stdmagLookup[String(noradId)]
         : null,
+      decayed: false,
     };
   } catch {
     return null;
@@ -111,7 +112,7 @@ export function calculatePosition(sat: Satellite, currentEpoch: number): THREE.V
   const result = satellite.propagate(sat.satrec, date);
 
   if (!result.position || typeof result.position === 'boolean') {
-    return new THREE.Vector3(0, 0, 0);
+    return new THREE.Vector3();
   }
 
   const eci = result.position as satellite.EciVec3<number>;

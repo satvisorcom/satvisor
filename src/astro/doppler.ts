@@ -1,11 +1,8 @@
 /**
  * Doppler shift analysis for satellite passes.
  *
- * Improvements over the original C implementation:
- * 1. Uses satellite.js velocity output directly (analytical range-rate)
- *    instead of finite-difference with two propagations.
- * 2. Direct Rz(-GMST) rotation for ECI→ECEF instead of the
- *    lat/lon round-trip (2 trig calls vs 6).
+ * Uses satellite.js analytical velocity output for range-rate
+ * and direct Rz(-GMST) rotation for ECI→ECEF.
  */
 import { twoline2satrec, propagate } from 'satellite.js';
 import type { SatRec, EciVec3, Kilometer, KilometerPerSecond } from 'satellite.js';

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { timeStore } from '../stores/time.svelte';
+  import { uiStore } from '../stores/ui.svelte';
 
   let compactDatetime = $derived(() => {
     const dt = timeStore.displayDatetime;
@@ -18,20 +19,26 @@
 
 <div class="top-panel">
   <span class="hud-line" class:alert={isPausedOrWarp}>
-    {compactDatetime()} · {speedText()}
+    {compactDatetime()} ·
+    {#if timeStore.paused && uiStore.isMobile}
+      <svg class="pause-icon" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="1" width="4" height="14"/><rect x="10" y="1" width="4" height="14"/></svg>
+    {:else}
+      {speedText()}
+    {/if}
   </span>
 </div>
 
 <style>
   .top-panel {
     position: absolute;
-    top: 8px;
+    top: 7px;
     left: 10px;
   }
   .hud-line {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--scene-text);
     white-space: nowrap;
   }
   .hud-line.alert { color: var(--danger-bright); }
+  .pause-icon { width: 10px; height: 10px; vertical-align: -1px; }
 </style>

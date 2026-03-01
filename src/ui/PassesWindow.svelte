@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Select from './shared/Select.svelte';
   import Button from './shared/Button.svelte';
   import { uiStore } from '../stores/ui.svelte';
@@ -99,6 +100,7 @@
     autoSelect(pass);
     uiStore.selectedPassIdx = idx;
     uiStore.polarPlotOpen = true;
+    if (uiStore.isMobile) uiStore.openMobileSheet('polar-plot');
   }
 
   function skipTo(pass: SatellitePass, idx: number) {
@@ -107,6 +109,7 @@
     timeStore.warpToEpoch(target);
     uiStore.selectedPassIdx = idx;
     uiStore.polarPlotOpen = true;
+    if (uiStore.isMobile) uiStore.openMobileSheet('polar-plot');
   }
 
   function openDoppler(pass: SatellitePass, idx: number) {
@@ -114,10 +117,12 @@
     uiStore.selectedPassIdx = idx;
     uiStore.dopplerWindowOpen = true;
     uiStore.dopplerWindowFocus++;
+    if (uiStore.isMobile) uiStore.openMobileSheet('doppler');
   }
 
   function openObserver() {
     uiStore.observerWindowOpen = true;
+    if (uiStore.isMobile) uiStore.openMobileSheet('observer');
   }
 
   function satColor(colorIndex: number): string {
@@ -244,7 +249,7 @@
       {#if filterSummary}
         <span class="filter-summary active" title={filterSummary}>{filterSummary}</span>
       {/if}
-      <button class="filter-window-btn" class:active={uiStore.passFilterWindowOpen} class:has-filters={filtersActive} onclick={() => uiStore.passFilterWindowOpen = !uiStore.passFilterWindowOpen}>{@html ICON_FILTER} Filters{#if filtersActive}<span class="filter-dot"></span>{/if}</button>
+      <button class="filter-window-btn" class:active={uiStore.passFilterWindowOpen} class:has-filters={filtersActive} onclick={() => { if (uiStore.isMobile) { uiStore.openMobileSheet('pass-filters'); } else { uiStore.passFilterWindowOpen = !uiStore.passFilterWindowOpen; } }}>{@html ICON_FILTER} Filters{#if filtersActive}<span class="filter-dot"></span>{/if}</button>
     </div>
   </div>
 {/snippet}
@@ -314,7 +319,7 @@
   {/if}
 {/snippet}
 
-<DraggableWindow id="passes" title="Passes" icon={passesIcon} headerExtra={headerTabs} bind:open={uiStore.passesWindowOpen} initialX={9999} initialY={450}>
+{#snippet windowContent()}
   <div class="pw">
     {#if !observerStore.isSet}
       <div class="prompt">
@@ -371,12 +376,25 @@
         {/if}
       {/if}
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="passes" title="Passes" icon={passesIcon} headerExtra={headerTabs}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="passes" title="Passes" icon={passesIcon} headerExtra={headerTabs} bind:open={uiStore.passesWindowOpen} initialX={9999} initialY={450}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .pw {
     min-width: 400px;
     max-width: 520px;
+  }
+  @media (max-width: 767px) {
+    .pw { min-width: unset; max-width: unset; width: 100%; }
   }
 
   /* Tab bar (lives in titlebar via headerExtra) */

@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Checkbox from './shared/Checkbox.svelte';
   import Button from './shared/Button.svelte';
   import Input from './shared/Input.svelte';
@@ -120,14 +121,14 @@
       onclick={() => uiStore.setSingleSelectMode(true)}>Single</Button>
   </div>
 {/snippet}
-{#snippet footer()}
+{#snippet selFooter()}
   <div class="lock-row">
     <span class="lock-label">Lock</span>
     <span class="lock-value">{uiStore.lockTarget}</span>
     <span class="lock-hint">dblclick to change</span>
   </div>
 {/snippet}
-<DraggableWindow id="selection" title="Selection" icon={selIcon} {headerExtra} {footer} bind:open={uiStore.selectionWindowOpen} focus={uiStore.selectionWindowFocus} initialX={9999} initialY={200}>
+{#snippet windowContent()}
   <div class="sw">
     <div class="search-box">
       <Input
@@ -214,6 +215,7 @@
                   <Button size="xs" onclick={() => {
                     uiStore.satDatabaseNoradId = sat.noradId;
                     uiStore.satDatabaseOpen = true;
+                    if (uiStore.isMobile) uiStore.openMobileSheet('sat-database');
                   }} title="View SatNOGS database entry">{@html ICON_DATABASE} SatNOGS</Button>
                 {/if}
               </div>
@@ -223,7 +225,17 @@
       </div>
     {/if}
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="selection" title="Satellites" icon={selIcon} {headerExtra} footer={selFooter}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="selection" title="Selection" icon={selIcon} {headerExtra} footer={selFooter} bind:open={uiStore.selectionWindowOpen} focus={uiStore.selectionWindowFocus} initialX={9999} initialY={200}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .sel-mode-bar {
@@ -237,6 +249,7 @@
     min-width: 220px;
     max-width: 320px;
   }
+  @media (max-width: 767px) { .sw { max-width: unset; width: 100%; } }
   .search-box {
     position: relative;
     margin-bottom: 6px;

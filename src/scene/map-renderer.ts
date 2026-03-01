@@ -149,12 +149,13 @@ export class MapRenderer {
     satGeo2d.setAttribute('color', this.satColorBuffer2d);
     satGeo2d.setDrawRange(0, 0);
     this.satPoints2d = new THREE.Points(satGeo2d, new THREE.ShaderMaterial({
-      uniforms: { pointTexture: { value: satTex } },
+      uniforms: { pointTexture: { value: satTex }, dpr: { value: window.devicePixelRatio } },
       vertexShader: `
+        uniform float dpr;
         varying vec3 vColor;
         void main() {
           vColor = color;
-          gl_PointSize = 20.0;
+          gl_PointSize = 20.0 * dpr;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
@@ -358,6 +359,7 @@ export class MapRenderer {
     let hoveredSat: Satellite | null = null;
 
     for (const sat of satellites) {
+      if (sat.decayed) continue;
       if (hideUnselected && selectedSats.size > 0 && !selectedSats.has(sat)) continue;
 
       const mc = getMapCoordinates(sat.currentPos, gmstDeg, cfg.earthRotationOffset);

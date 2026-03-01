@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Button from './shared/Button.svelte';
   import Input from './shared/Input.svelte';
   import { uiStore } from '../stores/ui.svelte';
@@ -162,8 +163,7 @@
 </script>
 
 {#snippet obsIcon()}<span class="title-icon">{@html ICON_OBSERVER}</span>{/snippet}
-
-<DraggableWindow id="observer" title="Observer" icon={obsIcon} bind:open={uiStore.observerWindowOpen} initialX={10} initialY={490}>
+{#snippet windowContent()}
   <div class="ow">
     <!-- Location -->
     <h4 class="section-header">Location</h4>
@@ -220,12 +220,25 @@
       {/if}
     {/if}
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="observer" title="Observer" icon={obsIcon}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="observer" title="Observer" icon={obsIcon} bind:open={uiStore.observerWindowOpen} initialX={10} initialY={490}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .ow {
     min-width: 260px;
     max-width: 320px;
+  }
+  @media (max-width: 767px) {
+    .ow { max-width: unset; width: 100%; }
   }
 
   .section-header {

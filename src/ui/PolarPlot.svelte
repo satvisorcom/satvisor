@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { timeStore } from '../stores/time.svelte';
   import { ICON_POLAR } from './shared/icons';
@@ -49,11 +50,11 @@
 
   let scrubbing = false;
 
-  function canvasToLogical(e: PointerEvent): { lx: number; ly: number } {
+  function canvasToLogical(clientX: number, clientY: number): { lx: number; ly: number } {
     const rect = canvasEl!.getBoundingClientRect();
     const scaleX = SIZE / rect.width;
     const scaleY = (SIZE + 48) / rect.height;
-    return { lx: (e.clientX - rect.left) * scaleX, ly: (e.clientY - rect.top) * scaleY };
+    return { lx: (clientX - rect.left) * scaleX, ly: (clientY - rect.top) * scaleY };
   }
 
   function findNearestSkyPoint(lx: number, ly: number): { idx: number; dist: number } | null {
@@ -68,7 +69,8 @@
     return { idx: bestIdx, dist: bestDist };
   }
 
-  function scrubToPoint(lx: number, ly: number) {
+  function scrubToPoint(clientX: number, clientY: number) {
+    const { lx, ly } = canvasToLogical(clientX, clientY);
     const hit = findNearestSkyPoint(lx, ly);
     if (!hit) return;
     const pass = selectedPass!;
@@ -76,32 +78,36 @@
     timeStore.paused = true;
   }
 
+  function onWindowPointerMove(e: PointerEvent) {
+    e.preventDefault();
+    scrubToPoint(e.clientX, e.clientY);
+  }
+
+  function onWindowPointerUp() {
+    scrubbing = false;
+    window.removeEventListener('pointermove', onWindowPointerMove);
+    window.removeEventListener('pointerup', onWindowPointerUp);
+  }
+
   function onCanvasPointerDown(e: PointerEvent) {
     if (e.button !== 0 || !selectedPass || selectedPass.skyPath.length === 0) return;
-    const { lx, ly } = canvasToLogical(e);
+    const { lx, ly } = canvasToLogical(e.clientX, e.clientY);
     const hit = findNearestSkyPoint(lx, ly);
-    if (!hit || hit.dist > 20) return;
+    if (!hit || hit.dist > 40) return;
     scrubbing = true;
-    canvasEl!.setPointerCapture(e.pointerId);
-    scrubToPoint(lx, ly);
+    window.addEventListener('pointermove', onWindowPointerMove);
+    window.addEventListener('pointerup', onWindowPointerUp);
+    scrubToPoint(e.clientX, e.clientY);
     e.preventDefault();
   }
 
   function onCanvasPointerMove(e: PointerEvent) {
-    if (!canvasEl) return;
-    if (scrubbing) {
-      const { lx, ly } = canvasToLogical(e);
-      scrubToPoint(lx, ly);
-    } else if (selectedPass && selectedPass.skyPath.length > 0) {
-      // Hover cursor feedback
-      const { lx, ly } = canvasToLogical(e);
+    if (!canvasEl || scrubbing) return;
+    if (selectedPass && selectedPass.skyPath.length > 0) {
+      const { lx, ly } = canvasToLogical(e.clientX, e.clientY);
       const hit = findNearestSkyPoint(lx, ly);
-      canvasEl.style.cursor = hit && hit.dist < 20 ? 'grab' : '';
+      canvasEl.style.cursor = hit && hit.dist < 40 ? 'grab' : '';
     }
-  }
-
-  function onCanvasPointerUp() {
-    scrubbing = false;
   }
 
   function drawFrame() {
@@ -416,17 +422,27 @@
 </script>
 
 {#snippet polarIcon()}<span class="title-icon">{@html ICON_POLAR}</span>{/snippet}
-<DraggableWindow id="polar-plot" title="Polar Plot" icon={polarIcon} bind:open={uiStore.polarPlotOpen} initialX={9999} initialY={100}>
+{#snippet windowContent()}
   <div class="pp">
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <canvas
       bind:this={canvasEl}
+      style="touch-action:none"
       onpointerdown={onCanvasPointerDown}
       onpointermove={onCanvasPointerMove}
-      onpointerup={onCanvasPointerUp}
     ></canvas>
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="polar-plot" title="Polar Plot" icon={polarIcon}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="polar-plot" title="Polar Plot" icon={polarIcon} bind:open={uiStore.polarPlotOpen} initialX={9999} initialY={100}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .pp {

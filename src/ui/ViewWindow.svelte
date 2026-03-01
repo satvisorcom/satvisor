@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Checkbox from './shared/Checkbox.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { ICON_VIEW } from './shared/icons';
@@ -23,7 +24,7 @@
 </script>
 
 {#snippet viewIcon()}<span class="title-icon">{@html ICON_VIEW}</span>{/snippet}
-<DraggableWindow id="view" title="View" icon={viewIcon} bind:open={uiStore.viewWindowOpen} initialX={10} initialY={200}>
+{#snippet windowContent()}
   <div class="view-content">
     <div class="section">
       <div class="section-header">Rendering</div>
@@ -100,7 +101,17 @@
       </div>
     {/if}
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="view" title="View" icon={viewIcon}>
+    {@render windowContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="view" title="View" icon={viewIcon} bind:open={uiStore.viewWindowOpen} initialX={10} initialY={200}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .view-content {

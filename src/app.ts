@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Satellite } from './types';
 import { TargetLock, ViewMode } from './types';
 import { defaultConfig } from './config';
-import { DRAW_SCALE, EARTH_RADIUS_KM, MOON_RADIUS_KM, DEG2RAD, RAD2DEG, MAP_W, MAP_H } from './constants';
+import { DRAW_SCALE, EARTH_RADIUS_KM, MOON_RADIUS_KM, DEG2RAD, RAD2DEG, MAP_W, MAP_H, MOBILE_BREAKPOINT } from './constants';
 import { TimeSystem } from './simulation/time-system';
 import { Earth } from './scene/earth';
 import { CloudLayer } from './scene/cloud-layer';
@@ -201,6 +201,19 @@ export class App {
     this.camera2d.position.set(0, 0, 5);
     this.camera2d.lookAt(0, 0, 0);
     this.camera = new CameraController(this.camera3d, this.camera2d);
+
+    // On mobile, zoom in so the earth fills the screen nicely
+    if (window.innerWidth < MOBILE_BREAKPOINT) {
+      const earthR = EARTH_RADIUS_KM / DRAW_SCALE;
+      const fovRad = 45 * DEG2RAD;
+      const aspect = window.innerWidth / window.innerHeight;
+      // Use horizontal half-FOV (narrower on portrait) to fit the earth's width
+      const hFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
+      // Distance where earth fills 65% of viewport width
+      const dist = earthR / Math.sin(hFov / 2) / 0.65;
+      this.camera.snapDistance(dist);
+    }
+
     this.scene2d = new THREE.Scene();
     this.scene2d.background = new THREE.Color(palette.bg);
 
@@ -234,7 +247,7 @@ export class App {
       clearTargetLock: () => { if (this.lockedSat) this.exitSatLock(); else this.activeLock = TargetLock.NONE; },
       onSelect: () => this.handleClick(),
       onDoubleClick3D: () => this.handleDoubleClickLock(),
-      onDoubleClick2D: () => { this.activeLock = TargetLock.EARTH; },
+      onDoubleClick2D: () => { if (!this.hoveredSat && this.selectedSats.size > 0) this.clearSelection(); this.activeLock = TargetLock.EARTH; },
       onOrreryClick: () => this.orreryCtrl.handleClick(this.raycaster, this.input.mouseNDC),
       onToggleViewMode: () => {
         if (!this.orreryCtrl.isOrreryMode) {
@@ -369,7 +382,8 @@ export class App {
       this.orbitRenderer.precomputeOrbits([], this.timeSystem.currentEpoch);
       sourcesStore.totalSats = 0;
       sourcesStore.dupsRemoved = 0;
-      uiStore.satStatusText = '0 sats';
+      uiStore.satCount = 0;
+      uiStore.satStatusExtra = '';
       uiStore.tleLoadState = 'none';
       return;
     }
@@ -378,7 +392,8 @@ export class App {
     const toFetch = enabled.filter(s => !this.sourceData.has(s.id));
     if (toFetch.length > 0) {
       sourcesStore.loading = true;
-      uiStore.satStatusText = 'Loading...';
+      uiStore.satCount = -1;
+      uiStore.satStatusExtra = '';
 
       const fetches = toFetch.map(src => this.fetchSource(src));
       await Promise.allSettled(fetches);
@@ -466,9 +481,8 @@ export class App {
 
     sourcesStore.totalSats = deduped.length;
     sourcesStore.dupsRemoved = dupsRemoved;
-    let statusText = `${deduped.length} sats`;
-    if (dupsRemoved > 0) statusText += ` (${dupsRemoved} dups)`;
-    uiStore.satStatusText = statusText;
+    uiStore.satCount = deduped.length;
+    uiStore.satStatusExtra = dupsRemoved > 0 ? `${dupsRemoved} dups` : '';
 
     // Set load state for StatsPanel refresh button visibility
     // Show refresh button whenever we have CelesTrak sources loaded
@@ -959,7 +973,7 @@ export class App {
     this.scrubSat = this.selectedSats.values().next().value ?? null;
     if (!this.scrubSat) return false;
     const hit = this.orbitRenderer.scrubOrbitFromRay(
-      this.raycaster, this.camera3d, this.input.mousePos, timeStore.epoch, 20, this.scrubSat,
+      this.raycaster, this.camera3d, this.input.mousePos, timeStore.epoch, 40, this.scrubSat,
     );
     if (!hit) return false;
 
@@ -1015,6 +1029,14 @@ export class App {
 
   /** Handle click/tap satellite selection */
   private handleClick() {
+    // If hoveredSat is stale (e.g. pointer was over UI last frame), do a fresh raycast
+    if (!this.hoveredSat) {
+      if (this.viewMode === ViewMode.VIEW_3D) {
+        this.detectHover3D();
+      } else {
+        this.hoveredSat = this.mapRenderer.detectHover(this.input.mousePos, this.camera2d, this.satellites, this.timeSystem.getGmstDeg(), this.cfg, this.hideUnselected, this.selectedSats, this.camera.zoom2d, this.input.touchCount);
+      }
+    }
     if (this.hoveredSat) this.toggleSat(this.hoveredSat);
   }
 
@@ -1144,6 +1166,14 @@ export class App {
     };
     uiStore.lockTarget = lockLabels[this.activeLock] ?? 'Earth';
 
+    // Set view offset to center earth above mobile sheet (35vh + 56px nav bar)
+    if (uiStore.isMobile) {
+      const sheetOffset = uiStore.activeMobileSheet
+        ? (window.innerHeight * 0.35 + 56) / 2
+        : 0;
+      this.camera.setViewOffsetY(sheetOffset);
+    }
+
     // Smooth camera lerp + update camera transforms
     const isOrreryOrPlanet = this.activeLock === TargetLock.PLANET || this.activeLock === TargetLock.SAT || this.orreryCtrl.isOrreryMode;
     this.camera.updateFrame(dt, earthRotRad, isOrreryOrPlanet);
@@ -1176,7 +1206,7 @@ export class App {
         const firstSel = this.selectedSats.values().next().value;
         if (firstSel) {
           this.raycaster.setFromCamera(this.input.mouseNDC, this.camera3d);
-          const near = this.orbitRenderer.scrubOrbitFromRay(this.raycaster, this.camera3d, this.input.mousePos, timeStore.epoch, 20, firstSel);
+          const near = this.orbitRenderer.scrubOrbitFromRay(this.raycaster, this.camera3d, this.input.mousePos, timeStore.epoch, 40, firstSel);
           this.renderer.domElement.style.cursor = near ? 'grab' : '';
         } else {
           this.renderer.domElement.style.cursor = '';
@@ -1361,7 +1391,8 @@ export class App {
       const pass = uiStore.activePassList[uiStore.selectedPassIdx];
       // Lazy sky path: enrich with per-point shadow + magnitude for polar plot bloom
       // Worker provides ~60 points with shadowFactor but no mag; recompute with mag on first view
-      const needsMag = pass.skyPath.length === 0 || pass.skyPath[0].mag === undefined;
+      // Use rangeKm as sentinel — worker doesn't provide it, so undefined means not yet enriched
+      const needsMag = pass.skyPath.length === 0 || pass.skyPath[0].rangeKm === undefined;
       if (needsMag) {
         const sat = this.satByNorad.get(pass.satNoradId);
         if (sat) {
@@ -1467,6 +1498,7 @@ export class App {
     if (sunHit && !earthHit && !moonHit) this.activeLock = TargetLock.SUN;
     else if (moonHit && !earthHit) this.activeLock = TargetLock.MOON;
     else if (earthHit) { this.activeLock = TargetLock.EARTH; this.lockedSat = null; }
+    else if (this.selectedSats.size > 0) { this.clearSelection(); }
   }
 
   private detectHover3D() {
@@ -1475,26 +1507,27 @@ export class App {
     const earthR = EARTH_RADIUS_KM / DRAW_SCALE;
     const camPos = this.camera3d.position;
 
+    // Compute distance from camera to Earth surface along the ray
+    // If ray hits Earth, any satellite beyond that distance is behind Earth
+    const rd = this.raycaster.ray.direction;
+    const oc = camPos; // ray origin
+    const b = 2 * (oc.x * rd.x + oc.y * rd.y + oc.z * rd.z);
+    const c = oc.x * oc.x + oc.y * oc.y + oc.z * oc.z - earthR * earthR;
+    const disc = b * b - 4 * c;
+    const earthHitDist = disc > 0 ? (-b - Math.sqrt(disc)) / 2 : Infinity;
+
     let closestRayDist = 9999;
     for (const sat of this.satellites) {
+      if (sat.decayed) continue;
       if (this.hideUnselected && this.selectedSats.size > 0 && !this.selectedSats.has(sat)) continue;
 
       this.tmpVec3.copy(sat.currentPos).divideScalar(DRAW_SCALE);
       const distToCam = camPos.distanceTo(this.tmpVec3);
+
+      // Skip satellites behind Earth's surface
+      if (distToCam > earthHitDist) continue;
+
       const hitRadius = 0.015 * distToCam * touchScale;
-
-      // Skip satellites occluded by Earth
-      const vx = this.tmpVec3.x - camPos.x, vy = this.tmpVec3.y - camPos.y, vz = this.tmpVec3.z - camPos.z;
-      const L = Math.sqrt(vx * vx + vy * vy + vz * vz);
-      if (L > 0) {
-        const dx = vx / L, dy = vy / L, dz = vz / L;
-        const t = -(camPos.x * dx + camPos.y * dy + camPos.z * dz);
-        if (t > 0 && t < L) {
-          const cx = camPos.x + dx * t, cy = camPos.y + dy * t, cz = camPos.z + dz * t;
-          if (Math.sqrt(cx * cx + cy * cy + cz * cz) < earthR * 0.99) continue;
-        }
-      }
-
       this.tmpSphere.set(this.tmpVec3, hitRadius);
       if (this.raycaster.ray.intersectsSphere(this.tmpSphere)) {
         const rayDist = this.raycaster.ray.distanceToPoint(this.tmpVec3);

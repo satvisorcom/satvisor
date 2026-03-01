@@ -60,7 +60,7 @@ export class Earth {
   }
 
   /**
-   * Custom sphere matching the original GenEarthMesh:
+   * Custom sphere with UV-aligned seam for day/night shader:
    * theta = (u - 0.5) * 2PI, phi = v * PI
    * x = cos(theta)*sin(phi), y = cos(phi), z = -sin(theta)*sin(phi)
    */

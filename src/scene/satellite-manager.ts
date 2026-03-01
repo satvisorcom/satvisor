@@ -35,7 +35,7 @@ export class SatelliteManager {
     const material = new THREE.ShaderMaterial({
       uniforms: {
         pointTexture: { value: satTexture },
-        pointSize: { value: 16.0 },
+        pointSize: { value: 16.0 * window.devicePixelRatio },
       },
       vertexShader: `
         attribute float alpha;
@@ -131,7 +131,14 @@ export class SatelliteManager {
     for (let i = 0; i < count; i++) {
       const sat = satellites[i];
       if (i % batchCount === batch || sat === hoveredSat || selectedSats.has(sat)) {
-        sat.currentPos = calculatePosition(sat, currentEpoch);
+        const pos = calculatePosition(sat, currentEpoch);
+        const r2 = pos.x * pos.x + pos.y * pos.y + pos.z * pos.z;
+        if (r2 > EARTH_RADIUS_KM * EARTH_RADIUS_KM) {
+          sat.currentPos = pos;
+          sat.decayed = false;
+        } else {
+          sat.decayed = true;
+        }
       }
     }
   }
@@ -172,6 +179,11 @@ export class SatelliteManager {
 
     for (let i = 0; i < count; i++) {
       const sat = satellites[i];
+
+      if (sat.decayed) {
+        this.alphaAttr.array[i] = 0;
+        continue;
+      }
 
       const dx = sat.currentPos.x / DRAW_SCALE;
       const dy = sat.currentPos.y / DRAW_SCALE;

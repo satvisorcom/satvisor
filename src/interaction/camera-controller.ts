@@ -16,6 +16,18 @@ export class CameraController {
   private _target3d = new THREE.Vector3();
   private _targetTarget3d = new THREE.Vector3();
 
+  // ---- Touch inertia velocity state ----
+  private _orbitVelX = 0;
+  private _orbitVelY = 0;
+  private _panVelX = 0;
+  private _panVelY = 0;
+  private _pan2dVelX = 0;
+  private _pan2dVelY = 0;
+
+  // ---- View offset (center earth above mobile sheet) ----
+  private _viewOffsetY = 0;
+  private _targetViewOffsetY = 0;
+
   // ---- 2D orthographic camera state ----
   private _cam2dZoom = 1.0;
   private _targetCam2dZoom = 1.0;
@@ -101,6 +113,13 @@ export class CameraController {
     this._targetCamAngleY = Math.max(-1.5, Math.min(1.5, this._targetCamAngleY));
   }
 
+  /** Apply orbit delta with velocity tracking (for touch inertia). */
+  orbitWithVelocity(dx: number, dy: number): void {
+    this.orbit(dx, dy);
+    this._orbitVelX = dx;
+    this._orbitVelY = dy;
+  }
+
   /** Apply 3D pan (shift+drag or two-finger) to targetTarget3d. */
   pan3d(dx: number, dy: number): void {
     const forward = new THREE.Vector3().subVectors(this._target3d, this.camera3d.position).normalize();
@@ -111,11 +130,25 @@ export class CameraController {
     this._targetTarget3d.add(upVec.multiplyScalar(dy * panSpeed));
   }
 
+  /** Apply 3D pan with velocity tracking (for touch inertia). */
+  pan3dWithVelocity(dx: number, dy: number): void {
+    this.pan3d(dx, dy);
+    this._panVelX = dx;
+    this._panVelY = dy;
+  }
+
   /** Apply 2D pan to targetCam2dTarget. */
   pan2d(dx: number, dy: number): void {
     const scale = 1.0 / this._targetCam2dZoom;
     this._targetCam2dTarget.x -= dx * scale;
     this._targetCam2dTarget.y += dy * scale;
+  }
+
+  /** Apply 2D pan with velocity tracking (for touch inertia). */
+  pan2dWithVelocity(dx: number, dy: number): void {
+    this.pan2d(dx, dy);
+    this._pan2dVelX = dx;
+    this._pan2dVelY = dy;
   }
 
   /** Apply 3D scroll zoom to targetCamDistance with min-zoom clamping. */
@@ -132,15 +165,33 @@ export class CameraController {
 
   /** Apply pinch-zoom scale to 3D distance with min-zoom clamping. */
   pinchZoom3d(scale: number, minZoom: number): void {
+    if (Math.abs(scale - 1.0) < 0.01) return;
     this._targetCamDistance /= scale;
     this._targetCamDistance = Math.max(minZoom, this._targetCamDistance);
   }
 
   /** Apply pinch-zoom scale to 2D zoom with clamping. */
   pinchZoom2d(scale: number): void {
+    if (Math.abs(scale - 1.0) < 0.01) return;
     this._targetCam2dZoom *= scale;
     this._targetCam2dZoom = Math.max(0.1, this._targetCam2dZoom);
   }
+
+  /** Begin inertia decay (called on touchend — velocities already set from last touchmove). */
+  startInertia(): void { /* decay runs in updateFrame() */ }
+
+  /** Kill all inertia velocity (called on new touchstart). */
+  stopInertia(): void {
+    this._orbitVelX = 0;
+    this._orbitVelY = 0;
+    this._panVelX = 0;
+    this._panVelY = 0;
+    this._pan2dVelX = 0;
+    this._pan2dVelY = 0;
+  }
+
+  /** Set vertical view offset in pixels (shifts projection to center in available space). */
+  setViewOffsetY(pixels: number): void { this._targetViewOffsetY = pixels; }
 
   /** Clamp 2D target Y to map bounds. */
   clamp2dBounds(): void {
@@ -158,6 +209,9 @@ export class CameraController {
   updateFrame(dt: number, earthRotRad: number, isOrreryOrPlanet: boolean): void {
     const smooth = Math.min(1.0, 10.0 * dt);
 
+    // Lerp view offset
+    this._viewOffsetY += (this._targetViewOffsetY - this._viewOffsetY) * smooth;
+
     // Lerp 2D state
     this._cam2dZoom += (this._targetCam2dZoom - this._cam2dZoom) * smooth;
     this._cam2dTarget.lerp(this._targetCam2dTarget, smooth);
@@ -168,6 +222,39 @@ export class CameraController {
     this._camDistance += (this._targetCamDistance - this._camDistance) * smooth;
     this._target3d.lerp(this._targetTarget3d, smooth);
 
+    // Inertia: apply velocity and decay (frame-rate independent)
+    const friction = Math.pow(0.92, dt * 60);  // normalize to 60fps reference
+    const velThreshold = 0.01;
+
+    if (Math.abs(this._orbitVelX) > velThreshold || Math.abs(this._orbitVelY) > velThreshold) {
+      this._targetCamAngleX -= this._orbitVelX * 0.005;
+      this._targetCamAngleY += this._orbitVelY * 0.005;
+      this._targetCamAngleY = Math.max(-1.5, Math.min(1.5, this._targetCamAngleY));
+      this._orbitVelX *= friction;
+      this._orbitVelY *= friction;
+    } else {
+      this._orbitVelX = 0;
+      this._orbitVelY = 0;
+    }
+
+    if (Math.abs(this._panVelX) > velThreshold || Math.abs(this._panVelY) > velThreshold) {
+      this.pan3d(this._panVelX, this._panVelY);
+      this._panVelX *= friction;
+      this._panVelY *= friction;
+    } else {
+      this._panVelX = 0;
+      this._panVelY = 0;
+    }
+
+    if (Math.abs(this._pan2dVelX) > velThreshold || Math.abs(this._pan2dVelY) > velThreshold) {
+      this.pan2d(this._pan2dVelX, this._pan2dVelY);
+      this._pan2dVelX *= friction;
+      this._pan2dVelY *= friction;
+    } else {
+      this._pan2dVelX = 0;
+      this._pan2dVelY = 0;
+    }
+
     // Update 3D camera position (co-rotate with Earth so it appears stationary)
     const camAX = this._camAngleX + (isOrreryOrPlanet ? 0 : earthRotRad);
     this.camera3d.position.set(
@@ -177,6 +264,13 @@ export class CameraController {
     );
     this.camera3d.lookAt(this._target3d);
 
+    // Apply 3D view offset: shift projection to center earth above sheet
+    if (Math.abs(this._viewOffsetY) > 0.5) {
+      this.camera3d.updateProjectionMatrix();
+      const ndcOffset = this._viewOffsetY * 2 / window.innerHeight;
+      this.camera3d.projectionMatrix.elements[9] -= ndcOffset;
+    }
+
     // Clamp 2D target Y to map bounds
     this.clamp2dBounds();
 
@@ -184,10 +278,12 @@ export class CameraController {
     const aspect = window.innerWidth / window.innerHeight;
     const halfH = MAP_H / 2 / this._cam2dZoom;
     const halfW = halfH * aspect;
+    // Apply 2D view offset: shift orthographic bounds to center map above sheet
+    const worldOffsetY = this._viewOffsetY * (halfH * 2) / window.innerHeight;
     this.camera2d.left = this._cam2dTarget.x - halfW;
     this.camera2d.right = this._cam2dTarget.x + halfW;
-    this.camera2d.top = this._cam2dTarget.y + halfH;
-    this.camera2d.bottom = this._cam2dTarget.y - halfH;
+    this.camera2d.top = this._cam2dTarget.y + halfH + worldOffsetY;
+    this.camera2d.bottom = this._cam2dTarget.y - halfH + worldOffsetY;
     this.camera2d.updateProjectionMatrix();
   }
 

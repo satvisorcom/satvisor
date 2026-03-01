@@ -1,5 +1,6 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
+  import MobileSheet from './shared/MobileSheet.svelte';
   import Select from './shared/Select.svelte';
   import Input from './shared/Input.svelte';
   import Button from './shared/Button.svelte';
@@ -28,6 +29,8 @@
 
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let ctx: CanvasRenderingContext2D | null = null;
+  let isOpen = $derived(uiStore.passFilterWindowOpen || uiStore.activeMobileSheet === 'pass-filters');
+  let mobileTab = $state<'chart' | 'settings'>('chart');
 
   // Local working copies synced to store on change
   let azFrom = $state(uiStore.passAzFrom);
@@ -52,7 +55,7 @@
 
   // Sync from store when window opens or store values change externally
   $effect(() => {
-    if (uiStore.passFilterWindowOpen) {
+    if (isOpen) {
       azFrom = uiStore.passAzFrom;
       azTo = uiStore.passAzTo;
       minEl = uiStore.passMinEl;
@@ -236,10 +239,16 @@
 
   // Rebuild heatmap when passes or filter values change (skip during computation or drag)
   let computing = $derived(uiStore.passesComputing || uiStore.nearbyComputing);
+  let heatmapPending = 0;
   $effect(() => {
     // Touch reactive deps
     void passes; void azFrom; void azTo; void minEl; void maxEl; void horizonMask;
-    if (!computing && !dragging) rebuildHeatmap();
+    if (!computing && !dragging) {
+      const cic = window.cancelIdleCallback ?? clearTimeout;
+      const ric = window.requestIdleCallback ?? ((cb: IdleRequestCallback) => setTimeout(cb, 0) as unknown as number);
+      cic(heatmapPending);
+      heatmapPending = ric(() => rebuildHeatmap(), { timeout: 200 });
+    }
   });
 
   // Drawing
@@ -472,7 +481,7 @@
 
   // Sync freq from store when window opens
   $effect(() => {
-    if (uiStore.passFilterWindowOpen) {
+    if (isOpen) {
       freqMin = uiStore.passFreqMinMHz;
       freqMax = uiStore.passFreqMaxMHz;
     }
@@ -493,6 +502,10 @@
   function initCanvas() {
     if (!canvasEl) return;
     ctx = initHiDPICanvas(canvasEl, SIZE, SIZE);
+    if (uiStore.isMobile) {
+      canvasEl.style.width = '220px';
+      canvasEl.style.height = '220px';
+    }
   }
 
   // Clear interaction flag on any global pointerup (safety net if pointer leaves element)
@@ -504,7 +517,7 @@
   }
 
   $effect(() => {
-    if (uiStore.passFilterWindowOpen) {
+    if (isOpen) {
       window.addEventListener('pointerup', onGlobalPointerUp);
       return () => window.removeEventListener('pointerup', onGlobalPointerUp);
     }
@@ -512,7 +525,7 @@
 
   // Init canvas when window opens
   $effect(() => {
-    if (canvasEl && uiStore.passFilterWindowOpen) {
+    if (canvasEl && isOpen) {
       initCanvas();
     }
   });
@@ -522,11 +535,17 @@
     // Touch all reactive deps that affect the canvas
     void azFrom; void azTo; void minEl; void maxEl; void horizonMask;
     void dragging; void heatmapCanvas;
-    if (ctx && uiStore.passFilterWindowOpen) drawFrame();
+    if (ctx && isOpen) drawFrame();
   });
 </script>
 
 {#snippet headerExtra()}
+  {#if uiStore.isMobile}
+    <div class="pf-tab-bar">
+      <Button size="xs" variant="ghost" active={mobileTab === 'chart'} onclick={() => mobileTab = 'chart'}>El/Az/Hor</Button>
+      <Button size="xs" variant="ghost" active={mobileTab === 'settings'} onclick={() => mobileTab = 'settings'}>Other</Button>
+    </div>
+  {/if}
   {#if uiStore.hasActivePassFilters}
     <Button class="pf-reset" size="xs" variant="ghost" onclick={reset}>Reset</Button>
   {/if}
@@ -534,96 +553,139 @@
 
 {#snippet pfIcon()}<span class="title-icon">{@html ICON_FILTER}</span>{/snippet}
 
-<DraggableWindow id="pass-filters" title="Pass Filters" icon={pfIcon} {headerExtra} bind:open={uiStore.passFilterWindowOpen} initialX={9999} initialY={150}>
+{#snippet topRow()}
+  <div class="pf-row pf-row-top">
+    <span class="pf-label">Show</span>
+    <Select value={uiStore.passVisibility}
+      onchange={(e) => uiStore.setPassVisibility((e.target as HTMLSelectElement).value as 'all' | 'observable' | 'visible')}>
+      <option value="all">All Passes</option>
+      <option value="observable">Observable</option>
+      <option value="visible">Visible (mag ≤ 5)</option>
+    </Select>
+    <span class="pf-label" style="margin-left:6px">Min view</span>
+    <Input class="pf-num-top" type="number" min="0" max="3600" value={uiStore.passMinDuration}
+      onchange={(e) => uiStore.setPassMinDuration(Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0))} />
+    <span class="pf-unit">s</span>
+  </div>
+{/snippet}
+
+{#snippet polarChart()}
+  <div class="pf-canvas-wrap">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <canvas bind:this={canvasEl}
+      onpointerdown={onPointerDown}
+      onpointermove={onPointerMove}
+      onpointerup={onPointerUp}
+      onpointercancel={onPointerUp}></canvas>
+  </div>
+{/snippet}
+
+{#snippet chartControls()}
+  <div class="pf-row">
+    <span class="pf-label"><span class="pf-dot" style="background:var(--handle-el)"></span>Elevation</span>
+    <Input class="pf-num" size="xs" type="number" min="0" max="90" bind:value={minEl}
+      onchange={() => syncToStore()} />
+    <span class="pf-sep">&mdash;</span>
+    <Input class="pf-num" size="xs" type="number" min="0" max="90" bind:value={maxEl}
+      onchange={() => syncToStore()} />
+    <span class="pf-unit">°</span>
+  </div>
+  <div class="pf-row">
+    <span class="pf-label"><span class="pf-dot" style="background:var(--handle-az)"></span>Azimuth</span>
+    <Input class="pf-num" size="xs" type="number" min="0" max="360" bind:value={azFrom}
+      onchange={() => syncToStore()} />
+    <span class="pf-sep">&mdash;</span>
+    <Input class="pf-num" size="xs" type="number" min="0" max="360" bind:value={azTo}
+      onchange={() => syncToStore()} />
+    <span class="pf-unit">°</span>
+    <div class="pf-presets">
+      {#each AZ_PRESETS as p}
+        <Button size="xs" active={azFrom === p.from && azTo === p.to} onclick={() => applyAzPreset(p)}>{p.label}</Button>
+      {/each}
+    </div>
+  </div>
+  <div class="pf-row pf-row-hz">
+    <span class="pf-label"><span class="pf-dot" style="background:var(--handle-hz)"></span>Horizon</span>
+    <div class="pf-horizon">
+      {#each DIRS as dir, i}
+        <div class="pf-hz-cell">
+          <span class="pf-dir">{dir}</span>
+          <Input class="pf-num-hz" size="xs" type="number" min="0" max="80" bind:value={horizonMask[i]}
+            onchange={() => { horizonMask = [...horizonMask]; syncToStore(); }} />
+          <span class="pf-unit">°</span>
+        </div>
+      {/each}
+    </div>
+  </div>
+{/snippet}
+
+{#snippet freqRow()}
+  <div class="pf-row pf-row-freq">
+    <span class="pf-label">Frequency</span>
+    <Input class="pf-num-freq" type="number" min="0" max="50000" bind:value={freqMin}
+      onchange={syncFreqToStore} placeholder="Min" />
+    <span class="pf-sep">&mdash;</span>
+    <Input class="pf-num-freq" type="number" min="0" max="50000" bind:value={freqMax}
+      onchange={syncFreqToStore} placeholder="Max" />
+    <span class="pf-unit">MHz</span>
+    <div class="pf-presets">
+      {#each FREQ_PRESETS as p}
+        <Button active={freqMin === p.min && freqMax === p.max} onclick={() => applyFreqPreset(p)}>{p.label}</Button>
+      {/each}
+    </div>
+  </div>
+{/snippet}
+
+{#snippet windowContent()}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="pf"
     onpointerdown={() => { uiStore.passFilterInteracting = true; }}
     onpointerup={() => { uiStore.passFilterInteracting = false; uiStore.onFilterInteractionEnd?.(); }}
     onpointercancel={() => { uiStore.passFilterInteracting = false; uiStore.onFilterInteractionEnd?.(); }}>
-    <div class="pf-row pf-row-top">
-      <span class="pf-label">Show</span>
-      <Select value={uiStore.passVisibility}
-        onchange={(e) => uiStore.setPassVisibility((e.target as HTMLSelectElement).value as 'all' | 'observable' | 'visible')}>
-        <option value="all">All Passes</option>
-        <option value="observable">Observable</option>
-        <option value="visible">Visible (mag ≤ 5)</option>
-      </Select>
-      <span class="pf-label" style="margin-left:6px">Min view</span>
-      <Input class="pf-num-top" type="number" min="0" max="3600" value={uiStore.passMinDuration}
-        onchange={(e) => uiStore.setPassMinDuration(Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0))} />
-      <span class="pf-unit">s</span>
-    </div>
-
-    <div class="pf-canvas-wrap">
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <canvas bind:this={canvasEl}
-        onpointerdown={onPointerDown}
-        onpointermove={onPointerMove}
-        onpointerup={onPointerUp}
-        onpointercancel={onPointerUp}></canvas>
-    </div>
-
+    {@render topRow()}
+    {@render polarChart()}
     <div class="pf-controls">
-      <div class="pf-row">
-        <span class="pf-label"><span class="pf-dot" style="background:var(--handle-el)"></span>Elevation</span>
-        <Input class="pf-num" size="xs" type="number" min="0" max="90" bind:value={minEl}
-          onchange={() => syncToStore()} />
-        <span class="pf-sep">&mdash;</span>
-        <Input class="pf-num" size="xs" type="number" min="0" max="90" bind:value={maxEl}
-          onchange={() => syncToStore()} />
-        <span class="pf-unit">°</span>
-      </div>
-
-      <div class="pf-row">
-        <span class="pf-label"><span class="pf-dot" style="background:var(--handle-az)"></span>Azimuth</span>
-        <Input class="pf-num" size="xs" type="number" min="0" max="360" bind:value={azFrom}
-          onchange={() => syncToStore()} />
-        <span class="pf-sep">&mdash;</span>
-        <Input class="pf-num" size="xs" type="number" min="0" max="360" bind:value={azTo}
-          onchange={() => syncToStore()} />
-        <span class="pf-unit">°</span>
-        <div class="pf-presets">
-          {#each AZ_PRESETS as p}
-            <Button size="xs" active={azFrom === p.from && azTo === p.to} onclick={() => applyAzPreset(p)}>{p.label}</Button>
-          {/each}
-        </div>
-      </div>
-
-      <div class="pf-row pf-row-hz">
-        <span class="pf-label"><span class="pf-dot" style="background:var(--handle-hz)"></span>Horizon</span>
-        <div class="pf-horizon">
-          {#each DIRS as dir, i}
-            <div class="pf-hz-cell">
-              <span class="pf-dir">{dir}</span>
-              <Input class="pf-num-hz" size="xs" type="number" min="0" max="80" bind:value={horizonMask[i]}
-                onchange={() => { horizonMask = [...horizonMask]; syncToStore(); }} />
-              <span class="pf-unit">°</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      <div class="pf-row pf-row-freq">
-        <span class="pf-label">Frequency</span>
-        <Input class="pf-num-freq" type="number" min="0" max="50000" bind:value={freqMin}
-          onchange={syncFreqToStore} placeholder="Min" />
-        <span class="pf-sep">&mdash;</span>
-        <Input class="pf-num-freq" type="number" min="0" max="50000" bind:value={freqMax}
-          onchange={syncFreqToStore} placeholder="Max" />
-        <span class="pf-unit">MHz</span>
-        <div class="pf-presets">
-          {#each FREQ_PRESETS as p}
-            <Button active={freqMin === p.min && freqMax === p.max} onclick={() => applyFreqPreset(p)}>{p.label}</Button>
-          {/each}
-        </div>
-      </div>
+      {@render chartControls()}
+      {@render freqRow()}
     </div>
   </div>
-</DraggableWindow>
+{/snippet}
+
+{#snippet mobileContent()}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="pf"
+    onpointerdown={() => { uiStore.passFilterInteracting = true; }}
+    onpointerup={() => { uiStore.passFilterInteracting = false; uiStore.onFilterInteractionEnd?.(); }}
+    onpointercancel={() => { uiStore.passFilterInteracting = false; uiStore.onFilterInteractionEnd?.(); }}>
+    {#if mobileTab === 'chart'}
+      {@render polarChart()}
+      <div class="pf-controls">
+        {@render chartControls()}
+      </div>
+    {:else}
+      {@render topRow()}
+      {@render freqRow()}
+    {/if}
+  </div>
+{/snippet}
+
+{#if uiStore.isMobile}
+  <MobileSheet id="pass-filters" title="Pass Filters" icon={pfIcon} {headerExtra}>
+    {@render mobileContent()}
+  </MobileSheet>
+{:else}
+  <DraggableWindow id="pass-filters" title="Pass Filters" icon={pfIcon} {headerExtra} bind:open={uiStore.passFilterWindowOpen} initialX={9999} initialY={150}>
+    {@render windowContent()}
+  </DraggableWindow>
+{/if}
 
 <style>
   .pf {
     width: 330px;
+  }
+  @media (max-width: 767px) {
+    .pf { width: 100%; }
+    .pf-row-freq { margin-top: 4px; padding-top: 0; border-top: none; }
   }
   .pf-row-top {
     margin-bottom: 8px;
@@ -704,5 +766,12 @@
   :global(.pf-reset) {
     margin-left: auto;
     margin-right: 6px;
+  }
+
+  /* Mobile tab bar (in titlebar via headerExtra) */
+  .pf-tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 1px;
   }
 </style>

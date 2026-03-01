@@ -1,7 +1,7 @@
 import { getCurrentRealTimeEpoch, epochToDatetimeStr, epochToUnix, unixToEpoch } from '../astro/epoch';
 
 /**
- * Port of the C version's StepTimeMultiplier.
+ * Step through time multiplier values.
  * Progression: ... -4, -2, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2, 4, ...
  */
 export function stepTimeMultiplier(current: number, increase: boolean): number {
@@ -27,8 +27,7 @@ function formatSpeed(m: number): string {
   if (m === 0) return '0x';
   const abs = Math.abs(m);
   const sign = m < 0 ? '-' : '';
-  if (abs >= 10) return `${sign}${abs.toFixed(0)}x`;
-  if (abs >= 1) return `${sign}${abs}x`;
+  if (abs >= 1) return `${sign}${Math.round(abs)}x`;
   return `${sign}${abs}x`;
 }
 
@@ -187,6 +186,12 @@ class TimeStore {
 
   setEpochFromDate(date: Date) {
     this.warpToEpoch(dateToEpoch(date));
+  }
+
+  /** Snap epoch instantly (for nudge buttons — no warp animation). */
+  snapToDate(date: Date) {
+    if (this.warping) this.cancelWarp();
+    this.epoch = dateToEpoch(date);
   }
 
   private cancelWarp() {

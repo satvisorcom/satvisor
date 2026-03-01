@@ -41,10 +41,18 @@
     </div>
   </div>
   <div class="section">
-    <h3>About</h3>
-    TLE data from <a href="https://celestrak.org" target="_blank">CelesTrak</a><br>
-    Based on <a href="https://github.com/aweeri/TLEscope" target="_blank">TLEscope</a> by aweeri<br>
-    <a href="https://github.com/aweeri/TLEscope/blob/main/LICENSE" target="_blank">AGPL-3.0</a>
+    <h3>Credits</h3>
+    <div class="credits">
+      <span>TLE data</span><a href="https://celestrak.org" target="_blank">CelesTrak</a>
+      <span>Satellite metadata</span><a href="https://satnogs.org" target="_blank">SatNOGS</a>
+      <span>Moon textures</span><a href="https://svs.gsfc.nasa.gov/4720/" target="_blank">NASA SVS CGI Moon Kit</a>
+      <span>Planet textures</span><a href="https://www.solarsystemscope.com/textures/" target="_blank">Solar System Scope</a>
+      <span>Inspired by</span><a href="https://github.com/aweeri/TLEscope" target="_blank">TLEscope</a>
+    </div>
+  </div>
+  <div class="section">
+    <h3>License</h3>
+    <a href="https://github.com/sandrwich/threescope/blob/master/LICENSE" target="_blank">AGPL-3.0</a>
     &middot; <a href="https://github.com/sandrwich/threescope" target="_blank">Source code</a>
   </div>
 </Modal>
@@ -65,6 +73,12 @@
   }
   .ctrl-key { color: var(--text-dim); text-align: right; white-space: nowrap; }
   .ctrl-desc { color: var(--text-muted); }
+  .credits {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 12px;
+  }
+  .credits span { color: var(--text-ghost); }
   :global(.info-modal) a { color: var(--text-faint); text-decoration: none; }
   :global(.info-modal) a:hover { color: var(--text-dim); }
   kbd {
