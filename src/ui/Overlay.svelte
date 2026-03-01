@@ -6,8 +6,7 @@
   import TlePicker from './TlePicker.svelte';
   import MobileNav from './MobileNav.svelte';
   import SatInfo from './SatInfo.svelte';
-  import ApsisLabels from './ApsisLabels.svelte';
-  import PassMarkers from './PassMarkers.svelte';
+  import SceneLabels from './SceneLabels.svelte';
   import BottomPanel from './BottomPanel.svelte';
   import InfoModal from './InfoModal.svelte';
   import SettingsWindow from './SettingsWindow.svelte';
@@ -42,8 +41,7 @@
     <BottomPanel />
   {/if}
   <SatInfo />
-  <ApsisLabels />
-  <PassMarkers />
+  <SceneLabels />
   <InfoModal />
   <SettingsWindow />
   <ObserverWindow />

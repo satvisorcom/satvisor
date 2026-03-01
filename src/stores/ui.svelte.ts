@@ -3,6 +3,39 @@ import type { SatellitePass } from '../passes/pass-types';
 import { ViewMode } from '../types';
 import { MOBILE_BREAKPOINT } from '../constants';
 
+export class SceneLabel {
+  visible = $state(false);
+  text = $state('');
+  el: HTMLDivElement | null = null;
+  drawPos: { x: number; y: number; z: number } | null = null;
+  readonly color: string;
+  readonly fontSize: number;
+  readonly centered: boolean;
+
+  constructor(color: string, fontSize = 12, centered = false) {
+    this.color = color;
+    this.fontSize = fontSize;
+    this.centered = centered;
+  }
+
+  show(text: string, sx: number, sy: number, rotDeg?: number) {
+    this.text = text;
+    this.visible = true;
+    if (this.el) {
+      this.el.dataset.sx = String(sx);
+      this.el.dataset.sy = String(sy);
+      const extra = (this.centered ? ' translate(-50%, -50%)' : '')
+                   + (rotDeg != null ? ` rotate(${rotDeg}deg)` : '');
+      this.el.dataset.transformExtra = extra;
+      this.el.style.transform = `translate(${sx}px,${sy}px)${extra}`;
+    }
+  }
+
+  hide() {
+    this.visible = false;
+  }
+}
+
 class UIStore {
   // Satellite state
   hoveredSat = $state<Satellite | null>(null);
@@ -126,30 +159,18 @@ class UIStore {
   satInfoNameColor = $state('#ffff00');
   satInfoHint = $state('');
 
-  // Apsis labels
-  periVisible = $state(false);
-  periText = $state('');
-  apoVisible = $state(false);
-  apoText = $state('');
-
-  // Pass markers (AOS/LOS/TCA)
-  passAosVisible = $state(false);
-  passAosText = $state('');
-  passLosVisible = $state(false);
-  passLosText = $state('');
-  passTcaVisible = $state(false);
-  passTcaText = $state('');
-  passAosDrawPos: { x: number; y: number; z: number } | null = null;
-  passLosDrawPos: { x: number; y: number; z: number } | null = null;
-  passTcaDrawPos: { x: number; y: number; z: number } | null = null;
+  // Scene labels (apsis, pass markers, range)
+  labels = {
+    peri:  new SceneLabel('var(--apsis-peri)'),
+    apo:   new SceneLabel('var(--apsis-apo)'),
+    aos:   new SceneLabel('var(--marker-aos)'),
+    los:   new SceneLabel('var(--marker-los)'),
+    tca:   new SceneLabel('var(--marker-tca)'),
+    range: new SceneLabel('var(--marker-range)', 11, true),
+  };
 
   // DOM refs — set by components, read by App for direct positioning
   satInfoEl: HTMLDivElement | null = null;
-  periLabelEl: HTMLDivElement | null = null;
-  apoLabelEl: HTMLDivElement | null = null;
-  passAosLabelEl: HTMLDivElement | null = null;
-  passLosLabelEl: HTMLDivElement | null = null;
-  passTcaLabelEl: HTMLDivElement | null = null;
   planetCanvasEl: HTMLCanvasElement | null = null;
 
   // Data sources window

@@ -5,13 +5,31 @@ import { DRAW_SCALE, EARTH_RADIUS_KM, MU, RAD2DEG, DEG2RAD, MAP_W, TWO_PI } from
 import { getCorrectedElements } from '../astro/propagator';
 import { ORBIT_COLORS } from '../scene/orbit-renderer';
 import { computeApsis, computeApsis2D } from '../astro/apsis';
-import { getMapCoordinates } from '../astro/coordinates';
+import { getMapCoordinates, latLonToSurface } from '../astro/coordinates';
 import { uiStore } from '../stores/ui.svelte';
 import { sunDirectionECI, isEclipsed } from '../astro/eclipse';
 import { computePhaseAngle, observerEci, slantRange, estimateVisualMagnitude } from '../astro/magnitude';
 import { epochToGmst } from '../astro/epoch';
 import { getAzEl } from '../astro/az-el';
 import { observerStore } from '../stores/observer.svelte';
+
+/** Check if a draw-space point is occluded by the Earth sphere. */
+function isOccludedByEarth(pt: { x: number; y: number; z: number }, camPos: THREE.Vector3, earthR: number): boolean {
+  const dx = pt.x - camPos.x, dy = pt.y - camPos.y, dz = pt.z - camPos.z;
+  const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const ux = dx / L, uy = dy / L, uz = dz / L;
+  const t = -(camPos.x * ux + camPos.y * uy + camPos.z * uz);
+  if (t > 0 && t < L) {
+    const cx = camPos.x + ux * t, cy = camPos.y + uy * t, cz = camPos.z + uz * t;
+    if (Math.sqrt(cx * cx + cy * cy + cz * cz) < earthR * 0.99) return true;
+  }
+  return false;
+}
+
+/** Format km with space-separated thousands: 340 → "340 km", 12500 → "12 500 km" */
+function formatKm(km: number): string {
+  return `${Math.round(km).toLocaleString('en-US').replace(/,/g, ' ')} km`;
+}
 
 export class UIUpdater {
   update(params: {
@@ -43,6 +61,7 @@ export class UIUpdater {
     } = params;
 
     const cardSat = activeSat;
+    const L = uiStore.labels;
 
     // Compute per-sat data for Selection Window
     const satDataArr: SelectedSatInfo[] = [];
@@ -96,8 +115,6 @@ export class UIUpdater {
 
     // Hover tooltip — only when actually hovering
     const infoEl = uiStore.satInfoEl;
-    const periLabel = uiStore.periLabelEl;
-    const apoLabel = uiStore.apoLabelEl;
 
     if (hoveredSat) {
       const hSat = hoveredSat;
@@ -179,20 +196,8 @@ export class UIUpdater {
         const earthR = EARTH_RADIUS_KM / DRAW_SCALE;
         const camPos = camera3d.position;
 
-        const isOccluded = (pt: THREE.Vector3): boolean => {
-          const dx = pt.x - camPos.x, dy = pt.y - camPos.y, dz = pt.z - camPos.z;
-          const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          const ux = dx / L, uy = dy / L, uz = dz / L;
-          const t = -(camPos.x * ux + camPos.y * uy + camPos.z * uz);
-          if (t > 0 && t < L) {
-            const cx = camPos.x + ux * t, cy = camPos.y + uy * t, cz = camPos.z + uz * t;
-            if (Math.sqrt(cx * cx + cy * cy + cz * cz) < earthR * 0.99) return true;
-          }
-          return false;
-        };
-
-        const periOccluded = isOccluded(pDraw);
-        const apoOccluded = isOccluded(aDraw);
+        const periOccluded = isOccludedByEarth(pDraw, camPos, earthR);
+        const apoOccluded = isOccludedByEarth(aDraw, camPos, earthR);
 
         periSprite3d.position.copy(pDraw);
         periSprite3d.visible = !periOccluded;
@@ -207,31 +212,17 @@ export class UIUpdater {
         const ppX = (pp.x * 0.5 + 0.5) * vw;
         const ppY = (-pp.y * 0.5 + 0.5) * vh;
         if (!periOccluded && pp.z < 1 && ppX > -50 && ppX < vw + 50 && ppY > -20 && ppY < vh + 20) {
-          uiStore.periText = `Peri ${(periR - EARTH_RADIUS_KM).toFixed(0)} km`;
-          uiStore.periVisible = true;
-          if (periLabel) {
-            const px = ppX + 12, py = ppY - 6;
-            periLabel.dataset.sx = String(px);
-            periLabel.dataset.sy = String(py);
-            periLabel.style.transform = `translate(${px}px,${py}px)`;
-          }
+          L.peri.show(`Peri ${formatKm(periR - EARTH_RADIUS_KM)}`, ppX + 12, ppY - 6);
         } else {
-          uiStore.periVisible = false;
+          L.peri.hide();
         }
 
         const apX = (ap.x * 0.5 + 0.5) * vw;
         const apY = (-ap.y * 0.5 + 0.5) * vh;
         if (!apoOccluded && ap.z < 1 && apX > -50 && apX < vw + 50 && apY > -20 && apY < vh + 20) {
-          uiStore.apoText = `Apo ${(apoR - EARTH_RADIUS_KM).toFixed(0)} km`;
-          uiStore.apoVisible = true;
-          if (apoLabel) {
-            const ax = apX + 12, ay = apY - 6;
-            apoLabel.dataset.sx = String(ax);
-            apoLabel.dataset.sy = String(ay);
-            apoLabel.style.transform = `translate(${ax}px,${ay}px)`;
-          }
+          L.apo.show(`Apo ${formatKm(apoR - EARTH_RADIUS_KM)}`, apX + 12, apY - 6);
         } else {
-          uiStore.apoVisible = false;
+          L.apo.hide();
         }
       } else {
         periSprite3d.visible = false;
@@ -254,81 +245,110 @@ export class UIUpdater {
 
         const pnx = (periX - camL) / (camR - camL);
         const pny = (-peri2d.y - camB) / (camT - camB);
-        uiStore.periText = `Peri ${(periR - EARTH_RADIUS_KM).toFixed(0)} km`;
-        uiStore.periVisible = pnx > -0.1 && pnx < 1.1 && pny > -0.1 && pny < 1.1;
-        if (uiStore.periVisible && periLabel) {
-          const px = pnx * vw + 12, py = (1 - pny) * vh - 8;
-          periLabel.dataset.sx = String(px);
-          periLabel.dataset.sy = String(py);
-          periLabel.style.transform = `translate(${px}px,${py}px)`;
+        if (pnx > -0.1 && pnx < 1.1 && pny > -0.1 && pny < 1.1) {
+          L.peri.show(`Peri ${formatKm(periR - EARTH_RADIUS_KM)}`, pnx * vw + 12, (1 - pny) * vh - 8);
+        } else {
+          L.peri.hide();
         }
 
         const anx = (apoX - camL) / (camR - camL);
         const any_ = (-apo2d.y - camB) / (camT - camB);
-        uiStore.apoText = `Apo ${(apoR - EARTH_RADIUS_KM).toFixed(0)} km`;
-        uiStore.apoVisible = anx > -0.1 && anx < 1.1 && any_ > -0.1 && any_ < 1.1;
-        if (uiStore.apoVisible && apoLabel) {
-          const ax = anx * vw + 12, ay = (1 - any_) * vh - 8;
-          apoLabel.dataset.sx = String(ax);
-          apoLabel.dataset.sy = String(ay);
-          apoLabel.style.transform = `translate(${ax}px,${ay}px)`;
+        if (anx > -0.1 && anx < 1.1 && any_ > -0.1 && any_ < 1.1) {
+          L.apo.show(`Apo ${formatKm(apoR - EARTH_RADIUS_KM)}`, anx * vw + 12, (1 - any_) * vh - 8);
+        } else {
+          L.apo.hide();
         }
       }
     } else {
-      uiStore.periVisible = false;
-      uiStore.apoVisible = false;
+      L.peri.hide();
+      L.apo.hide();
       periSprite3d.visible = false;
       apoSprite3d.visible = false;
     }
 
     // Pass markers (AOS / LOS / TCA)
-    if (viewMode === ViewMode.VIEW_3D && uiStore.passAosDrawPos && uiStore.passLosDrawPos && uiStore.passTcaDrawPos) {
+    if (viewMode === ViewMode.VIEW_3D && L.aos.drawPos && L.los.drawPos && L.tca.drawPos) {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const earthR = EARTH_RADIUS_KM / DRAW_SCALE;
       const camPos = camera3d.position;
 
-      const projectLabel = (
-        dp: { x: number; y: number; z: number },
-        labelEl: HTMLDivElement | null,
-        setVisible: (v: boolean) => void,
-      ) => {
-        // Occlusion check against Earth
-        const dx = dp.x - camPos.x, dy = dp.y - camPos.y, dz = dp.z - camPos.z;
-        const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const ux = dx / L, uy = dy / L, uz = dz / L;
-        const t = -(camPos.x * ux + camPos.y * uy + camPos.z * uz);
-        if (t > 0 && t < L) {
-          const cx = camPos.x + ux * t, cy = camPos.y + uy * t, cz = camPos.z + uz * t;
-          if (Math.sqrt(cx * cx + cy * cy + cz * cz) < earthR * 0.99) {
-            setVisible(false);
-            return;
-          }
+      for (const label of [L.aos, L.los, L.tca]) {
+        const dp = label.drawPos!;
+        if (isOccludedByEarth(dp, camPos, earthR)) {
+          label.hide();
+          continue;
         }
-
         const v = new THREE.Vector3(dp.x, dp.y, dp.z).project(camera3d);
         const sx = (v.x * 0.5 + 0.5) * vw;
         const sy = (-v.y * 0.5 + 0.5) * vh;
         if (v.z < 1 && sx > -50 && sx < vw + 50 && sy > -20 && sy < vh + 20) {
-          setVisible(true);
-          if (labelEl) {
-            const lx = sx + 12, ly = sy - 6;
-            labelEl.dataset.sx = String(lx);
-            labelEl.dataset.sy = String(ly);
-            labelEl.style.transform = `translate(${lx}px,${ly}px)`;
-          }
+          label.show(label.text, sx + 12, sy - 6);
         } else {
-          setVisible(false);
+          label.hide();
         }
-      };
-
-      projectLabel(uiStore.passAosDrawPos, uiStore.passAosLabelEl, v => uiStore.passAosVisible = v);
-      projectLabel(uiStore.passLosDrawPos, uiStore.passLosLabelEl, v => uiStore.passLosVisible = v);
-      projectLabel(uiStore.passTcaDrawPos, uiStore.passTcaLabelEl, v => uiStore.passTcaVisible = v);
+      }
     } else {
-      uiStore.passAosVisible = false;
-      uiStore.passLosVisible = false;
-      uiStore.passTcaVisible = false;
+      L.aos.hide();
+      L.los.hide();
+      L.tca.hide();
+    }
+
+    // Range label — km readout at midpoint of observer→sat line
+    if (cardSat && observerStore.isSet && viewMode === ViewMode.VIEW_3D) {
+      const obsLoc = observerStore.location;
+      const obsDrawPos = latLonToSurface(obsLoc.lat, obsLoc.lon, gmstDeg, cfg.earthRotationOffset);
+      const satDraw = cardSat.currentPos.clone().divideScalar(DRAW_SCALE);
+
+      // Check the sat is above horizon (same check as orbit-renderer)
+      const toSatX = satDraw.x - obsDrawPos.x, toSatY = satDraw.y - obsDrawPos.y, toSatZ = satDraw.z - obsDrawPos.z;
+      if (toSatX * obsDrawPos.x + toSatY * obsDrawPos.y + toSatZ * obsDrawPos.z > 0) {
+        // Compute slant range in ECI
+        const satEci = { x: cardSat.currentPos.x, y: -cardSat.currentPos.z, z: cardSat.currentPos.y };
+        const gmstRad = gmstDeg * DEG2RAD;
+        const obsPos = observerEci(obsLoc.lat, obsLoc.lon, obsLoc.alt, gmstRad);
+        const rangeKm = slantRange(satEci, obsPos);
+
+        // Project both endpoints to screen to get line angle
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const obsScreen = obsDrawPos.clone().project(camera3d);
+        const osx = (obsScreen.x * 0.5 + 0.5) * vw;
+        const osy = (-obsScreen.y * 0.5 + 0.5) * vh;
+        const satScreen = satDraw.clone().project(camera3d);
+        const ssx = (satScreen.x * 0.5 + 0.5) * vw;
+        const ssy = (-satScreen.y * 0.5 + 0.5) * vh;
+
+        // Place label at 60% along the screen-space line (biased toward sat)
+        const sx = osx + (ssx - osx) * 0.6;
+        const sy = osy + (ssy - osy) * 0.6;
+
+        // Screen-space angle of the line — flip if text would be upside down
+        let angleDeg = Math.atan2(ssy - osy, ssx - osx) * RAD2DEG;
+        if (angleDeg > 90) angleDeg -= 180;
+        else if (angleDeg < -90) angleDeg += 180;
+
+        // Offset perpendicular to line so text sits above it
+        const perpX = -Math.sin(angleDeg * DEG2RAD) * 8;
+        const perpY = Math.cos(angleDeg * DEG2RAD) * 8;
+
+        const earthR = EARTH_RADIUS_KM / DRAW_SCALE;
+        const mid = new THREE.Vector3(
+          obsDrawPos.x + (satDraw.x - obsDrawPos.x) * 0.6,
+          obsDrawPos.y + (satDraw.y - obsDrawPos.y) * 0.6,
+          obsDrawPos.z + (satDraw.z - obsDrawPos.z) * 0.6,
+        );
+        if (!isOccludedByEarth(mid, camera3d.position, earthR) &&
+            satScreen.z < 1 && sx > -50 && sx < vw + 50 && sy > -20 && sy < vh + 20) {
+          L.range.show(formatKm(rangeKm), sx + perpX, sy + perpY, angleDeg);
+        } else {
+          L.range.hide();
+        }
+      } else {
+        L.range.hide();
+      }
+    } else {
+      L.range.hide();
     }
 
     // Label collision avoidance — nudge overlapping scene labels apart
@@ -364,7 +384,8 @@ export class UIUpdater {
     }
 
     for (const { el, x, y } of items) {
-      el.style.transform = `translate(${x}px,${y}px)`;
+      const extra = el.dataset.transformExtra || '';
+      el.style.transform = `translate(${x}px,${y}px)${extra}`;
     }
   }
 }

@@ -69,6 +69,7 @@
   /* ── Domain: apsis labels ── */
   --apsis-peri: #87ceeb;
   --apsis-apo: #ffa500;
+  --marker-range: #eeeeee;
 
   /* ── Accent ── */
   --accent: #66aaff;

@@ -692,19 +692,20 @@ export class OrbitRenderer {
               this._tmpPos.x / DRAW_SCALE, this._tmpPos.y / DRAW_SCALE, this._tmpPos.z / DRAW_SCALE
             );
 
-            // Store draw-space positions for label projection
-            uiStore.passAosDrawPos = { x: positions[0], y: positions[1], z: positions[2] };
-            uiStore.passLosDrawPos = {
+            // Store draw-space positions and text for label projection
+            const L = uiStore.labels;
+            L.aos.drawPos = { x: positions[0], y: positions[1], z: positions[2] };
+            L.los.drawPos = {
               x: positions[positions.length - 3],
               y: positions[positions.length - 2],
               z: positions[positions.length - 1],
             };
-            uiStore.passTcaDrawPos = {
+            L.tca.drawPos = {
               x: this._tmpPos.x / DRAW_SCALE, y: this._tmpPos.y / DRAW_SCALE, z: this._tmpPos.z / DRAW_SCALE,
             };
-            uiStore.passAosText = `AOS ${pass.aosAz.toFixed(0)}°`;
-            uiStore.passLosText = `LOS ${pass.losAz.toFixed(0)}°`;
-            uiStore.passTcaText = `TCA ${pass.maxEl.toFixed(0)}°`;
+            L.aos.text = `AOS ${pass.aosAz.toFixed(0)}°`;
+            L.los.text = `LOS ${pass.losAz.toFixed(0)}°`;
+            L.tca.text = `TCA ${pass.maxEl.toFixed(0)}°`;
           } else {
             this.passArcLine.visible = false;
             this.passAosMarker.visible = false;
@@ -743,9 +744,9 @@ export class OrbitRenderer {
         this.passLosMarker.visible = false;
         this.passTcaMarker.visible = false;
         this.lastPassArcKey = '';
-        uiStore.passAosDrawPos = null;
-        uiStore.passLosDrawPos = null;
-        uiStore.passTcaDrawPos = null;
+        uiStore.labels.aos.drawPos = null;
+        uiStore.labels.los.drawPos = null;
+        uiStore.labels.tca.drawPos = null;
       }
     } else {
       this.highlightLine.visible = false;
@@ -756,9 +757,9 @@ export class OrbitRenderer {
       this.passLosMarker.visible = false;
       this.passTcaMarker.visible = false;
       this.lastPassArcKey = '';
-      uiStore.passAosDrawPos = null;
-      uiStore.passLosDrawPos = null;
-      uiStore.passTcaDrawPos = null;
+      uiStore.labels.aos.drawPos = null;
+      uiStore.labels.los.drawPos = null;
+      uiStore.labels.tca.drawPos = null;
     }
 
     // --- Normal orbits: assembled from precomputed analytical data ---
