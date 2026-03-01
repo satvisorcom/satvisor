@@ -22,6 +22,10 @@
     return builtinSources.filter(s => s.name.toLowerCase().includes(q));
   });
   let customSources = $derived(sourcesStore.sources.filter(s => !s.builtin));
+  let allSources = $derived(sourcesStore.sources);
+  let enabledCount = $derived(sourcesStore.enabledIds.size);
+  let allEnabled = $derived(enabledCount === allSources.length && allSources.length > 0);
+  let someEnabled = $derived(enabledCount > 0 && !allEnabled);
 
   function submitUrl() {
     const name = newName.trim();
@@ -96,6 +100,13 @@
 {/snippet}
 {#snippet windowContent()}
   <div class="ds-content">
+    <div class="master-row">
+      <Checkbox size="sm"
+        checked={allEnabled}
+        mixed={someEnabled}
+        onchange={() => allEnabled ? sourcesStore.disableAllSources() : sourcesStore.enableAllSources(allSources.map(s => s.id))} />
+      <span class="master-label">{enabledCount} / {allSources.length} enabled</span>
+    </div>
     <Input
       class="filter-input"
       size="lg"
@@ -191,6 +202,15 @@
   }
   @media (max-width: 767px) {
     .ds-content { width: 100%; }
+  }
+  .master-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .master-label {
+    font-size: 11px;
+    color: var(--text-muted);
   }
   :global(.filter-input) { width: 100%; }
   .filter-count { color: var(--text-faint); font-size: 10px; }

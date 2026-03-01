@@ -25,32 +25,33 @@ function computeJ2Rates(
   };
 }
 
-// Pre-index stdmag data for fast numeric lookup
-const stdmagLookup = stdmagData as Record<string, number>;
+// Pre-index stdmag data for fast numeric lookup (avoid per-sat String conversion)
+const stdmagMap = new Map<number, number>();
+for (const [k, v] of Object.entries(stdmagData as Record<string, number>)) {
+  stdmagMap.set(Number(k), v);
+}
+
+const TWO_PI = 2.0 * Math.PI;
+const NDOT_CONV = TWO_PI / (86400.0 * 86400.0); // rev/day² → rad/s²
 
 export function parseTLE(name: string, line1: string, line2: string): Satellite | null {
   try {
     const satrec = satellite.twoline2satrec(line1, line2);
 
-    // Extract NORAD catalog number from TLE line 1 (columns 3-7, 1-indexed)
-    const noradId = parseInt(line1.substring(2, 7).trim(), 10);
+    // Read orbital elements directly from satrec (already parsed by twoline2satrec)
+    const sr = satrec as any;
+    const noradId: number = sr.satnum;
+    const epochDays = sr.epochyr * 1000 + sr.epochdays;
+    const inclination: number = sr.inclo;       // rad
+    const raan: number = sr.nodeo;              // rad
+    const eccentricity: number = sr.ecco;
+    const argPerigee: number = sr.argpo;        // rad
+    const meanAnomaly: number = sr.mo;          // rad
+    const meanMotion = sr.no / 60;              // rad/min → rad/s
+    const semiMajorAxis = sr.a * EARTH_RADIUS_EQ_KM; // earth radii → km
 
-    // Extract orbital elements from TLE lines
-    const epochDays = parseFloat(line1.substring(18, 32));
-    const inclination = parseFloat(line2.substring(8, 16)) * (Math.PI / 180);
-    const raan = parseFloat(line2.substring(17, 25)) * (Math.PI / 180);
-    const eccentricity = parseFloat('0.' + line2.substring(26, 33).trim());
-    const argPerigee = parseFloat(line2.substring(34, 42)) * (Math.PI / 180);
-    const meanAnomaly = parseFloat(line2.substring(43, 51)) * (Math.PI / 180);
-    const revsPerDay = parseFloat(line2.substring(52, 63));
-    const meanMotion = (revsPerDay * 2.0 * Math.PI) / 86400.0; // rad/s
-    const semiMajorAxis = Math.pow(MU / (meanMotion * meanMotion), 1.0 / 3.0);
-
-    // Parse ndot (first derivative of mean motion / 2) from TLE line 1 cols 33-43
-    // Format: " .NNNNNNNN" in rev/day², multiply by 2 to get full ndot
-    // Convert to rad/s²: rev/day² → rad/s² = * 2π / 86400²
-    const ndotHalf = parseFloat(line1.substring(33, 43).trim());
-    const ndot = 2.0 * ndotHalf * (2.0 * Math.PI) / (86400.0 * 86400.0);
+    // ndot: satrec stores raw TLE value (rev/day²/2), convert to rad/s²
+    const ndot = 2.0 * sr.ndot * NDOT_CONV;
 
     // Compute J2 secular rates
     const { raanRate, argPerigeeRate } = computeJ2Rates(
@@ -58,7 +59,7 @@ export function parseTLE(name: string, line1: string, line2: string): Satellite 
     );
 
     return {
-      noradId: isNaN(noradId) ? 0 : noradId,
+      noradId,
       name: name.trim(),
       epochDays,
       inclination,
@@ -75,9 +76,7 @@ export function parseTLE(name: string, line1: string, line2: string): Satellite 
       raanRate,
       argPerigeeRate,
       ndot,
-      stdMag: !isNaN(noradId) && String(noradId) in stdmagLookup
-        ? stdmagLookup[String(noradId)]
-        : null,
+      stdMag: stdmagMap.get(noradId) ?? null,
       decayed: false,
     };
   } catch {

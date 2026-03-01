@@ -23,7 +23,7 @@ import { InputHandler } from './interaction/input-handler';
 import { OrreryController } from './scene/orrery-controller';
 import { getMapCoordinates, latLonToSurface } from './astro/coordinates';
 import { calculateSunPosition } from './astro/sun';
-import { fetchTLEData, parseTLEText } from './data/tle-loader';
+import { fetchTLEData, parseTLETextParallel, warmupTLEWorkers } from './data/tle-loader';
 import { getSatellitesByFreqRange } from './data/satnogs';
 import { sourcesStore, type TLESourceConfig } from './stores/sources.svelte';
 import { timeStore } from './stores/time.svelte';
@@ -215,12 +215,19 @@ export class App {
     this.scene2d = new THREE.Scene();
     this.scene2d.background = new THREE.Color(palette.bg);
 
-    // Start TLE network fetch in parallel with texture loading (populates sourceData)
+    // Warm up TLE parsing workers — compile in background during texture download.
+    // On slow networks: ready in time for TLE parsing. On fast/localhost: readiness check falls back to sync.
+    warmupTLEWorkers();
+
+    // Start texture downloads first (network I/O, non-blocking)
+    this.setLoading(0.1, 'Loading textures (0/4)...');
+    const texturesDone = this.loadTextures();
+
+    // Parse cached TLE data while textures download (CPU-bound but hidden behind network wait)
     sourcesStore.load();
     const tleFetchDone = this.prefetchSources();
 
-    this.setLoading(0.1, 'Loading textures (0/4)...');
-    await this.loadTextures();
+    await texturesDone;
 
     // Orrery controller (after scene + camera + textures are ready)
     this.orreryCtrl = new OrreryController(this.scene3d, this.camera3d, this.camera, {
@@ -290,8 +297,8 @@ export class App {
   private async loadTextures() {
     const loader = new THREE.TextureLoader();
     let texLoaded = 0;
-    const texTotal = 4;
-    const load = (url: string, label: string) => new Promise<THREE.Texture>((resolve) => {
+    const texTotal = 9;
+    const load = (url: string) => new Promise<THREE.Texture>((resolve) => {
       loader.load(url, (tex) => {
         texLoaded++;
         this.setLoading(0.1 + (texLoaded / texTotal) * 0.35, `Loading textures (${texLoaded}/${texTotal})...`);
@@ -299,15 +306,20 @@ export class App {
       }, undefined, () => resolve(new THREE.Texture()));
     });
 
-    // Only block on textures needed for first frame — defer clouds (4.6MB) and moon (2.4MB)
-    const [dayTex, nightTex, satTex, starTex] = await Promise.all([
-      load('/textures/earth/color.webp', 'earth'),
-      load('/textures/earth/night.webp', 'night'),
-      load('/textures/ui/sat_icon.png', 'icons'),
-      load('/textures/stars.webp', 'stars'),
+    // Load ALL textures behind the loading screen — no deferred loads, no post-load stutter
+    const [dayTex, nightTex, satTex, starTex, cloudTex, moonTex, earthNormal, earthDisp, moonDisp] = await Promise.all([
+      load('/textures/earth/color.webp'),
+      load('/textures/earth/night.webp'),
+      load('/textures/ui/sat_icon.png'),
+      load('/textures/stars.webp'),
+      load('/textures/earth/clouds.webp'),
+      load('/textures/moon/color.webp'),
+      load('/textures/earth/normal.webp'),
+      load('/textures/earth/displacement.webp'),
+      load('/textures/moon/displacement.webp'),
     ]);
 
-    for (const tex of [dayTex, nightTex]) {
+    for (const tex of [dayTex, nightTex, cloudTex, earthNormal, earthDisp, moonTex, moonDisp]) {
       tex.flipY = false;
       tex.colorSpace = THREE.NoColorSpace;
     }
@@ -318,43 +330,28 @@ export class App {
     this.starTex = starTex;
     this.scene3d.background = starTex;
 
-    // GPU uploads happen on first animate() behind the loading screen — no initTexture needed here
+    // Pre-upload all textures to GPU behind the loading screen
+    for (const tex of [dayTex, nightTex, satTex, starTex, cloudTex, moonTex, earthNormal, earthDisp, moonDisp]) {
+      this.renderer.initTexture(tex);
+    }
 
     this.setLoading(0.5, 'Building scene...');
 
     // Earth
-    this.earth = new Earth(dayTex, nightTex, this.renderer);
+    this.earth = new Earth(dayTex, nightTex, earthNormal, earthDisp);
     this.scene3d.add(this.earth.mesh);
 
     // Atmosphere (Fresnel rim glow, rendered before clouds)
     this.atmosphere = new Atmosphere();
     this.scene3d.add(this.atmosphere.mesh);
 
-    // Clouds — start with 1×1 transparent placeholder, load real texture async
-    const cloudPlaceholder = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
-    cloudPlaceholder.needsUpdate = true;
-    this.cloudLayer = new CloudLayer(cloudPlaceholder);
+    // Clouds
+    this.cloudLayer = new CloudLayer(cloudTex);
     this.scene3d.add(this.cloudLayer.mesh);
-    loader.load('/textures/earth/clouds.webp', (tex) => {
-      tex.flipY = false;
-      tex.colorSpace = THREE.NoColorSpace;
-      this.cloudLayer.setTexture(tex);
-      this.renderer.initTexture(tex);
-    });
 
-    // Moon — start with 1×1 gray placeholder, load real texture async
-    const moonPlaceholder = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1, THREE.RGBAFormat);
-    moonPlaceholder.flipY = false;
-    moonPlaceholder.colorSpace = THREE.NoColorSpace;
-    moonPlaceholder.needsUpdate = true;
-    this.moonScene = new MoonScene(moonPlaceholder, this.renderer);
+    // Moon
+    this.moonScene = new MoonScene(moonTex, moonDisp);
     this.scene3d.add(this.moonScene.mesh);
-    loader.load('/textures/moon/color.webp', (tex) => {
-      tex.flipY = false;
-      tex.colorSpace = THREE.NoColorSpace;
-      this.moonScene.setTexture(tex);
-      this.renderer.initTexture(tex);
-    });
 
     // Sun
     this.sunScene = new SunScene();
@@ -475,14 +472,14 @@ export class App {
         clearTimeout(timeout);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const text = await resp.text();
-        satellites = parseTLEText(text);
+        satellites = await parseTLETextParallel(text);
         try {
           localStorage.setItem('tlescope_tle_custom_' + src.id, JSON.stringify({ ts: Date.now(), data: text, count: satellites.length }));
         } catch { /* localStorage full */ }
         sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded' });
       } else {
         const text = sourcesStore.getCustomText(src.id);
-        satellites = parseTLEText(text);
+        satellites = await parseTLETextParallel(text);
         sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded' });
       }
       this.sourceData.set(src.id, satellites);
@@ -650,9 +647,11 @@ export class App {
       this.fpsLimit = limit;
     };
 
-    // Multi-source loading
+    // Multi-source loading (debounced: rapid toggles coalesce into one loadSources call)
+    let sourceChangeTimer: ReturnType<typeof setTimeout> | null = null;
     sourcesStore.onSourcesChange = async () => {
-      await this.loadSources();
+      if (sourceChangeTimer) clearTimeout(sourceChangeTimer);
+      sourceChangeTimer = setTimeout(() => { sourceChangeTimer = null; this.loadSources(); }, 150);
     };
 
     // Planet button clicked

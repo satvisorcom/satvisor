@@ -16,52 +16,33 @@ export class Earth {
   private bumpEnabled = true;
   private aoEnabledState = true;
 
-  constructor(dayTex: THREE.Texture, nightTex: THREE.Texture, private renderer?: THREE.WebGLRenderer) {
+  constructor(dayTex: THREE.Texture, nightTex: THREE.Texture, normalTex: THREE.Texture | null, displacementTex: THREE.Texture | null) {
     const radius = EARTH_RADIUS_KM / DRAW_SCALE;
     const geometry = this.genEarthGeometry(radius, 256, 256);
+
+    this.normalMapLoaded = normalTex != null;
 
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         dayTexture: { value: dayTex },
         nightTexture: { value: nightTex },
-        normalMap: { value: null },
-        displacementMap: { value: null },
+        normalMap: { value: normalTex },
+        displacementMap: { value: displacementTex },
         sunDir: { value: new THREE.Vector3(1, 0, 0) },
         moonPos: { value: new THREE.Vector3(0, 0, 0) },
         moonRadius: { value: MOON_RADIUS_KM },
         showNight: { value: 1.0 },
         nightEmission: { value: 1.0 },
-        hasNormalMap: { value: 0.0 },
+        hasNormalMap: { value: normalTex ? 1.0 : 0.0 },
         aoEnabled: { value: 1.0 },
         displacementScale: { value: 0.007 },
-        hasDisplacement: { value: 0.0 },
+        hasDisplacement: { value: displacementTex ? 1.0 : 0.0 },
       },
       vertexShader: earthVertSrc,
       fragmentShader: earthFragSrc,
     });
 
     this.mesh = new THREE.Mesh(geometry, this.material);
-
-    const loader = new THREE.TextureLoader();
-
-    // Load normal map asynchronously
-    loader.load('/textures/earth/normal.webp', (tex) => {
-      tex.flipY = false;
-      tex.colorSpace = THREE.NoColorSpace;
-      this.material.uniforms.normalMap.value = tex;
-      this.normalMapLoaded = true;
-      if (this.bumpEnabled) this.material.uniforms.hasNormalMap.value = 1.0;
-      this.renderer?.initTexture(tex);
-    });
-
-    // Load displacement map asynchronously
-    loader.load('/textures/earth/displacement.webp', (tex) => {
-      tex.flipY = false;
-      tex.colorSpace = THREE.NoColorSpace;
-      this.material.uniforms.displacementMap.value = tex;
-      this.material.uniforms.hasDisplacement.value = 1.0;
-      this.renderer?.initTexture(tex);
-    });
   }
 
   /**

@@ -86,37 +86,24 @@ export class MoonScene {
   drawPos = new THREE.Vector3();
   private material: THREE.ShaderMaterial;
 
-  constructor(moonTex: THREE.Texture, private renderer?: THREE.WebGLRenderer) {
+  constructor(moonTex: THREE.Texture, displacementTex: THREE.Texture | null) {
     const radius = MOON_RADIUS_KM / DRAW_SCALE;
     const geometry = new THREE.SphereGeometry(radius, 256, 256);
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         map: { value: moonTex },
-        displacementMap: { value: null },
+        displacementMap: { value: displacementTex },
         sunDir: { value: new THREE.Vector3(1, 0, 0) },
         showNight: { value: 1.0 },
         bumpStrength: { value: 1.5 },
         aoEnabled: { value: 1.0 },
         displacementScale: { value: 0.006 },
-        hasDisplacement: { value: 0.0 },
+        hasDisplacement: { value: displacementTex ? 1.0 : 0.0 },
       },
       vertexShader: MOON_VERT,
       fragmentShader: MOON_FRAG,
     });
     this.mesh = new THREE.Mesh(geometry, this.material);
-
-    // Load displacement map asynchronously
-    new THREE.TextureLoader().load('/textures/moon/displacement.webp', (tex) => {
-      tex.flipY = false;
-      tex.colorSpace = THREE.NoColorSpace;
-      this.material.uniforms.displacementMap.value = tex;
-      this.material.uniforms.hasDisplacement.value = 1.0;
-      this.renderer?.initTexture(tex);
-    });
-  }
-
-  setTexture(tex: THREE.Texture) {
-    this.material.uniforms.map.value = tex;
   }
 
   updateSunDir(sunDir: THREE.Vector3) {

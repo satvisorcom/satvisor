@@ -112,6 +112,18 @@ class SourcesStore {
     this.onSourcesChange?.();
   }
 
+  enableAllSources(ids: string[]) {
+    this.enabledIds = new Set(ids);
+    this.persistEnabled();
+    this.onSourcesChange?.();
+  }
+
+  disableAllSources() {
+    this.enabledIds = new Set();
+    this.persistEnabled();
+    this.onSourcesChange?.();
+  }
+
   addCustomUrl(name: string, url: string): string {
     const id = 'custom:' + crypto.randomUUID();
     this.sources = [...this.sources, {

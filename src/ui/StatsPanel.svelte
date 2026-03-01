@@ -30,7 +30,7 @@
   <span class="hud-line">
     <span class="fps" style="color:{uiStore.fpsColor}">{uiStore.fpsDisplay} FPS</span>
     <span class="sep">&middot;</span>
-    <span class="sats">{uiStore.satCount < 0 ? 'Loading...' : `${uiStore.satCount} sats`}{#if !uiStore.isMobile && uiStore.satStatusExtra} ({uiStore.satStatusExtra}){/if}</span>
+    <span class="sats">{uiStore.satCount < 0 ? 'Loading...' : `${uiStore.satCount} sats`}{#if !uiStore.isMobile && uiStore.satStatusExtra}&nbsp;({uiStore.satStatusExtra}){/if}</span>
     {#if showButton}
       <button class="refresh-btn" title={buttonTitle} onclick={() => uiStore.onRefreshTLE?.()}>↻</button>
     {/if}
