@@ -73,41 +73,10 @@
       <span class="more-icon">{@html ICON_SETTINGS}</span>
       <span class="more-label">Settings</span>
     </button>
-    <button class="more-item" onclick={() => onMoreItem('help')}>
+    <button class="more-item" onclick={() => { uiStore.closeMobileSheet(); uiStore.infoModalOpen = true; }}>
       <span class="more-icon">{@html ICON_HELP}</span>
       <span class="more-label">Help</span>
     </button>
-  </div>
-</MobileSheet>
-
-<MobileSheet id="help" title="Help">
-  <div class="help-content">
-    <div class="help-section">
-      <h3 class="help-heading">Touch</h3>
-      <div class="help-grid">
-        <span class="help-key">1 finger drag</span><span class="help-desc">Orbit camera</span>
-        <span class="help-key">2 finger drag</span><span class="help-desc">Pan camera</span>
-        <span class="help-key">Pinch</span><span class="help-desc">Zoom in / out</span>
-        <span class="help-key">Tap satellite</span><span class="help-desc">Select / deselect</span>
-      </div>
-    </div>
-    <div class="help-section">
-      <h3 class="help-heading">Credits</h3>
-      <div class="help-grid">
-        <span class="help-key">TLE data</span><a class="help-link" href="https://celestrak.org" target="_blank" rel="noopener">CelesTrak</a>
-        <span class="help-key">Satellite metadata</span><a class="help-link" href="https://satnogs.org" target="_blank" rel="noopener">SatNOGS</a>
-        <span class="help-key">Moon textures</span><a class="help-link" href="https://svs.gsfc.nasa.gov/4720/" target="_blank" rel="noopener">NASA SVS CGI Moon Kit</a>
-        <span class="help-key">Planet textures</span><a class="help-link" href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a>
-        <span class="help-key">Inspired by</span><a class="help-link" href="https://github.com/aweeri/TLEscope" target="_blank" rel="noopener">TLEscope</a>
-      </div>
-    </div>
-    <div class="help-section">
-      <h3 class="help-heading">License</h3>
-      <span class="help-about">
-        <a href="https://github.com/sandrwich/threescope/blob/master/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a>
-        &middot; <a href="https://github.com/sandrwich/threescope" target="_blank" rel="noopener">Source code</a>
-      </span>
-    </div>
   </div>
 </MobileSheet>
 
@@ -168,29 +137,4 @@
   .more-icon { display: flex; align-items: center; flex-shrink: 0; }
   .more-icon :global(svg) { width: 18px; height: 18px; }
   .more-label { flex: 1; }
-
-  .help-content { display: flex; flex-direction: column; gap: 12px; }
-  .help-heading {
-    font-size: 9px;
-    color: var(--text-ghost);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin: 0 0 4px;
-    font-weight: normal;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 2px;
-  }
-  .help-grid {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px 10px;
-    font-size: 11px;
-  }
-  .help-key { color: var(--text-ghost); text-align: right; white-space: nowrap; }
-  .help-desc { color: var(--text-dim); }
-  .help-link { color: var(--text-dim); text-decoration: none; font-size: 11px; }
-  .help-link:hover { color: var(--text); }
-  .help-about { font-size: 11px; color: var(--text-muted); }
-  .help-about a { color: var(--text-faint); text-decoration: none; }
-  .help-about a:hover { color: var(--text-dim); }
 </style>

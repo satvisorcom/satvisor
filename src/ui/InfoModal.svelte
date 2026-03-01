@@ -1,63 +1,71 @@
 <script lang="ts">
-  import Modal from './shared/Modal.svelte';
+  import DraggableWindow from './shared/DraggableWindow.svelte';
   import { uiStore } from '../stores/ui.svelte';
+  import { ICON_HELP } from './shared/icons';
 </script>
 
-<Modal bind:open={uiStore.infoModalOpen}>
-  <div class="touch-controls">
-    <div class="section">
-      <h3>Touch</h3>
-      <div class="ctrl-table">
-        <span class="ctrl-key">1 finger drag</span><span class="ctrl-desc">Orbit camera</span>
-        <span class="ctrl-key">2 finger drag</span><span class="ctrl-desc">Pan camera</span>
-        <span class="ctrl-key">Pinch</span><span class="ctrl-desc">Zoom in / out</span>
-        <span class="ctrl-key">Tap satellite</span><span class="ctrl-desc">Select / deselect</span>
+{#snippet helpIcon()}<span class="title-icon">{@html ICON_HELP}</span>{/snippet}
+
+<DraggableWindow title="Help" icon={helpIcon} modal bind:open={uiStore.infoModalOpen}>
+  <div class="info-content">
+    <div class="touch-controls">
+      <div class="section">
+        <h3>Touch</h3>
+        <div class="ctrl-table">
+          <span class="ctrl-key">1 finger drag</span><span class="ctrl-desc">Orbit camera</span>
+          <span class="ctrl-key">2 finger drag</span><span class="ctrl-desc">Pan camera</span>
+          <span class="ctrl-key">Pinch</span><span class="ctrl-desc">Zoom in / out</span>
+          <span class="ctrl-key">Tap satellite</span><span class="ctrl-desc">Select / deselect</span>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="desktop-controls">
-    <div class="section">
-      <h3>Mouse</h3>
-      <div class="ctrl-table">
-        <span class="ctrl-key"><kbd>MMB</kbd> drag</span><span class="ctrl-desc">Orbit camera</span>
-        <span class="ctrl-key"><kbd>Shift</kbd>+<kbd>MMB</kbd> drag</span><span class="ctrl-desc">Pan camera</span>
-        <span class="ctrl-key"><kbd>Scroll</kbd></span><span class="ctrl-desc">Zoom in / out</span>
-        <span class="ctrl-key">Click satellite</span><span class="ctrl-desc">Select / deselect</span>
+    <div class="desktop-controls">
+      <div class="section">
+        <h3>Mouse</h3>
+        <div class="ctrl-table">
+          <span class="ctrl-key"><kbd>MMB</kbd> drag</span><span class="ctrl-desc">Orbit camera</span>
+          <span class="ctrl-key"><kbd>Shift</kbd>+<kbd>MMB</kbd> drag</span><span class="ctrl-desc">Pan camera</span>
+          <span class="ctrl-key"><kbd>Scroll</kbd></span><span class="ctrl-desc">Zoom in / out</span>
+          <span class="ctrl-key">Click satellite</span><span class="ctrl-desc">Select / deselect</span>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Keyboard</h3>
+        <div class="ctrl-table">
+          <span class="ctrl-key"><kbd>Space</kbd></span><span class="ctrl-desc">Pause / resume</span>
+          <span class="ctrl-key"><kbd>.</kbd> <kbd>,</kbd></span><span class="ctrl-desc">Speed up / slow down</span>
+          <span class="ctrl-key"><kbd>/</kbd></span><span class="ctrl-desc">Reset speed</span>
+          <span class="ctrl-key"><kbd>M</kbd></span><span class="ctrl-desc">Toggle 2D / 3D map</span>
+          <span class="ctrl-key"><kbd>D</kbd></span><span class="ctrl-desc">Data sources</span>
+          <span class="ctrl-key"><kbd>P</kbd></span><span class="ctrl-desc">Pass predictor</span>
+          <span class="ctrl-key"><kbd>Ctrl</kbd>+<kbd>K</kbd></span><span class="ctrl-desc">Command palette</span>
+          <span class="ctrl-key"><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span class="ctrl-desc">Search satellite</span>
+          <span class="ctrl-key"><kbd>?</kbd></span><span class="ctrl-desc">Show help</span>
+        </div>
       </div>
     </div>
     <div class="section">
-      <h3>Keyboard</h3>
-      <div class="ctrl-table">
-        <span class="ctrl-key"><kbd>Space</kbd></span><span class="ctrl-desc">Pause / resume</span>
-        <span class="ctrl-key"><kbd>.</kbd> <kbd>,</kbd></span><span class="ctrl-desc">Speed up / slow down</span>
-        <span class="ctrl-key"><kbd>/</kbd></span><span class="ctrl-desc">Reset speed</span>
-        <span class="ctrl-key"><kbd>M</kbd></span><span class="ctrl-desc">Toggle 2D / 3D map</span>
-        <span class="ctrl-key"><kbd>D</kbd></span><span class="ctrl-desc">Data sources</span>
-        <span class="ctrl-key"><kbd>P</kbd></span><span class="ctrl-desc">Pass predictor</span>
-        <span class="ctrl-key"><kbd>Ctrl</kbd>+<kbd>K</kbd></span><span class="ctrl-desc">Command palette</span>
-        <span class="ctrl-key"><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span class="ctrl-desc">Search satellite</span>
-        <span class="ctrl-key"><kbd>?</kbd></span><span class="ctrl-desc">Show help</span>
+      <h3>Credits</h3>
+      <div class="credits">
+        <span>TLE data</span><a href="https://celestrak.org" target="_blank">CelesTrak</a>
+        <span>Satellite metadata</span><a href="https://satnogs.org" target="_blank">SatNOGS</a>
+        <span>Moon textures</span><a href="https://svs.gsfc.nasa.gov/4720/" target="_blank">NASA SVS CGI Moon Kit</a>
+        <span>Planet textures</span><a href="https://www.solarsystemscope.com/textures/" target="_blank">Solar System Scope</a>
+        <span>Inspired by</span><a href="https://github.com/aweeri/TLEscope" target="_blank">TLEscope</a>
       </div>
     </div>
-  </div>
-  <div class="section">
-    <h3>Credits</h3>
-    <div class="credits">
-      <span>TLE data</span><a href="https://celestrak.org" target="_blank">CelesTrak</a>
-      <span>Satellite metadata</span><a href="https://satnogs.org" target="_blank">SatNOGS</a>
-      <span>Moon textures</span><a href="https://svs.gsfc.nasa.gov/4720/" target="_blank">NASA SVS CGI Moon Kit</a>
-      <span>Planet textures</span><a href="https://www.solarsystemscope.com/textures/" target="_blank">Solar System Scope</a>
-      <span>Inspired by</span><a href="https://github.com/aweeri/TLEscope" target="_blank">TLEscope</a>
+    <div class="section">
+      <h3>License</h3>
+      <a href="https://github.com/sandrwich/threescope/blob/master/LICENSE" target="_blank">AGPL-3.0</a>
+      &middot; <a href="https://github.com/sandrwich/threescope" target="_blank">Source code</a>
     </div>
   </div>
-  <div class="section">
-    <h3>License</h3>
-    <a href="https://github.com/sandrwich/threescope/blob/master/LICENSE" target="_blank">AGPL-3.0</a>
-    &middot; <a href="https://github.com/sandrwich/threescope" target="_blank">Source code</a>
-  </div>
-</Modal>
+</DraggableWindow>
 
 <style>
+  .info-content {
+    line-height: 1.6;
+  }
   h3 {
     font-size: 14px;
     color: var(--text-dim);
@@ -79,8 +87,8 @@
     gap: 2px 12px;
   }
   .credits span { color: var(--text-ghost); }
-  :global(.info-modal) a { color: var(--text-faint); text-decoration: none; }
-  :global(.info-modal) a:hover { color: var(--text-dim); }
+  a { color: var(--text-faint); text-decoration: none; }
+  a:hover { color: var(--text-dim); }
   kbd {
     background: var(--kbd-bg);
     border: 1px solid var(--border);

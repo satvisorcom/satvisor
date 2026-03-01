@@ -6,7 +6,7 @@ import { MOBILE_BREAKPOINT } from '../constants';
 export class SceneLabel {
   visible = $state(false);
   text = $state('');
-  el: HTMLDivElement | null = null;
+  el = $state<HTMLDivElement | null>(null);
   drawPos: { x: number; y: number; z: number } | null = null;
   readonly color: string;
   readonly fontSize: number;

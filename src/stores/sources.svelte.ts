@@ -191,6 +191,48 @@ class SourcesStore {
     } catch { return ''; }
   }
 
+  /** Get raw TLE text for any source type from its cache/storage */
+  getRawTleText(src: TLESourceConfig): string | null {
+    try {
+      if (src.type === 'text') {
+        return localStorage.getItem(TEXT_KEY_PREFIX + src.id) || null;
+      }
+      if (src.type === 'celestrak' && src.group) {
+        const raw = localStorage.getItem('tlescope_tle_' + src.group);
+        if (!raw) return null;
+        return (JSON.parse(raw) as { data: string }).data;
+      }
+      if (src.type === 'url') {
+        const raw = localStorage.getItem('tlescope_tle_custom_' + src.id);
+        if (!raw) return null;
+        return (JSON.parse(raw) as { data: string }).data;
+      }
+    } catch { /* corrupt cache */ }
+    return null;
+  }
+
+  /** Overwrite stored TLE text for a custom text source and trigger reload */
+  updateCustomText(id: string, text: string) {
+    try {
+      localStorage.setItem(TEXT_KEY_PREFIX + id, text);
+    } catch { /* localStorage full */ }
+    this.onSourcesChange?.();
+  }
+
+  /** Convert a URL-type custom source to a text-type source */
+  convertToText(id: string, text: string) {
+    try {
+      localStorage.setItem(TEXT_KEY_PREFIX + id, text);
+    } catch { /* localStorage full */ }
+    this.sources = this.sources.map(s =>
+      s.id === id ? { ...s, type: 'text' as SourceType, url: undefined } : s
+    );
+    this.persistCustom();
+    // Clean up old URL cache
+    try { localStorage.removeItem('tlescope_tle_custom_' + id); } catch {}
+    this.onSourcesChange?.();
+  }
+
   private persistEnabled() {
     try {
       localStorage.setItem(ENABLED_KEY, JSON.stringify([...this.enabledIds]));

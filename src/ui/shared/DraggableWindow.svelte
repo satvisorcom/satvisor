@@ -70,6 +70,7 @@
     focus = 0,
     initialX = 10,
     initialY = 50,
+    modal = false,
     children,
   }: {
     title?: string;
@@ -81,6 +82,7 @@
     focus?: number;
     initialX?: number;
     initialY?: number;
+    modal?: boolean;
     children: any;
   } = $props();
 
@@ -95,8 +97,8 @@
   let windowEl: HTMLDivElement | undefined = $state();
   let initialized = false;
 
-  // Restore open/closed state from localStorage (use raw props, not $derived, to avoid reactive issues during init)
-  {
+  // Restore open/closed state from localStorage (skip for modals — they're controlled externally)
+  if (!modal) {
     const key = id || title;
     if (key) {
       const saved = localStorage.getItem(`${WIN_PREFIX}${key}_open`);
@@ -238,7 +240,7 @@
       zIndex = ++topZ;
     }
     prevOpen = open;
-    if (winKey) localStorage.setItem(sKey('open'), String(open));
+    if (winKey && !modal) localStorage.setItem(sKey('open'), String(open));
   });
 
   // External bring-to-front trigger — track focus value change
@@ -303,7 +305,36 @@
   });
 </script>
 
-{#if open}
+{#if open && modal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-overlay" onclick={(e: MouseEvent) => { if (e.target === e.currentTarget) open = false; }}>
+    <div
+      class="draggable-window modal-window"
+      bind:this={windowEl}
+      style="z-index:1000"
+      transition:windowTransition={{ duration: 120 }}
+    >
+      <div class="window-titlebar">
+        <span class="window-title">
+          {#if icon}{@render icon()}{/if}
+          {title}
+        </span>
+        {#if headerExtra}{@render headerExtra()}{/if}
+        <div class="window-controls">
+          <button class="window-close" onclick={() => open = false}>{@html ICON_CLOSE}</button>
+        </div>
+      </div>
+      <div class="window-body" class:has-footer={!!footer}>
+        {@render children()}
+      </div>
+      {#if footer}
+        <div class="window-footer">
+          {@render footer()}
+        </div>
+      {/if}
+    </div>
+  </div>
+{:else if open}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="draggable-window"
@@ -347,6 +378,16 @@
 {/if}
 
 <style>
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--modal-overlay);
+    pointer-events: auto;
+  }
   .draggable-window {
     position: absolute;
     pointer-events: auto;
@@ -356,6 +397,11 @@
     color: var(--text-muted);
     min-width: 200px;
     max-width: calc(100vw - 20px);
+  }
+  .modal-window {
+    position: relative;
+    width: 90%;
+    max-width: 420px;
   }
   .window-titlebar {
     display: flex;

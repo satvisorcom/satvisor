@@ -5,15 +5,22 @@
   import Button from './shared/Button.svelte';
   import Input from './shared/Input.svelte';
   import { uiStore } from '../stores/ui.svelte';
-  import { sourcesStore } from '../stores/sources.svelte';
+  import { sourcesStore, type TLESourceConfig, type SourceType } from '../stores/sources.svelte';
   import { getCacheAge } from '../data/tle-loader';
-  import { ICON_DATA_SOURCES } from './shared/icons';
+  import { ICON_DATA_SOURCES, ICON_DOWNLOAD, ICON_EDIT, ICON_CLOSE } from './shared/icons';
 
   let addingUrl = $state(false);
   let newName = $state('');
   let newUrl = $state('');
   let fileInput: HTMLInputElement | undefined = $state();
   let filterQuery = $state('');
+
+  // TLE editor modal state
+  let editOpen = $state(false);
+  let editName = $state('');
+  let editText = $state('');
+  let editSourceId: string | null = $state(null);
+  let editOriginalType: SourceType | null = $state(null);
 
   let builtinSources = $derived(sourcesStore.sources.filter(s => s.builtin));
   let filteredBuiltins = $derived.by(() => {
@@ -74,30 +81,80 @@
   }
 
   function getCacheInfo(src: { id: string; group?: string; type: string }): string | null {
-    // For enabled sources, use load state cache age
     const state = sourcesStore.loadStates.get(src.id);
     if (state?.status === 'loaded' && state.cacheAge != null) {
       return formatAge(state.cacheAge);
     }
-    // For disabled CelesTrak sources, peek at localStorage cache
     if (src.group) {
       const age = getCacheAge(src.group);
       if (age != null) return formatAge(age);
     }
     return null;
   }
+
+  function openPasteModal() {
+    editSourceId = null;
+    editOriginalType = null;
+    editName = '';
+    editText = '';
+    editOpen = true;
+  }
+
+  function openEditModal(src: TLESourceConfig) {
+    const text = sourcesStore.getRawTleText(src);
+    if (!text) return;
+    editSourceId = src.id;
+    editOriginalType = src.type;
+    editName = src.type === 'celestrak' ? src.name + ' (copy)' : src.name;
+    editText = text;
+    editOpen = true;
+  }
+
+  function downloadTle(src: TLESourceConfig) {
+    const text = sourcesStore.getRawTleText(src);
+    if (!text) return;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = src.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '.tle';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function saveEdit() {
+    const name = editName.trim();
+    const text = editText.trim();
+    if (!name || !text) return;
+
+    if (!editSourceId) {
+      // New paste
+      sourcesStore.addCustomFile(name, text);
+    } else if (editOriginalType === 'celestrak') {
+      // Fork celestrak as new custom
+      sourcesStore.addCustomFile(name, text);
+    } else if (editOriginalType === 'url') {
+      // Convert URL source to text
+      sourcesStore.convertToText(editSourceId, text);
+      if (name !== sourcesStore.sources.find(s => s.id === editSourceId)?.name) {
+        sourcesStore.renameCustom(editSourceId, name);
+      }
+    } else {
+      // Update existing text source
+      sourcesStore.updateCustomText(editSourceId, text);
+      if (name !== sourcesStore.sources.find(s => s.id === editSourceId)?.name) {
+        sourcesStore.renameCustom(editSourceId, name);
+      }
+    }
+    editOpen = false;
+  }
+
+  function hasCachedData(src: TLESourceConfig): boolean {
+    return sourcesStore.getRawTleText(src) != null;
+  }
 </script>
 
 {#snippet dsIcon()}<span class="title-icon">{@html ICON_DATA_SOURCES}</span>{/snippet}
-{#snippet dsFooter()}
-  {#if sourcesStore.loading}
-    <span class="footer-text">Loading...</span>
-  {:else}
-    <span class="footer-text">
-      {sourcesStore.totalSats} sats loaded{#if sourcesStore.dupsRemoved > 0} ({sourcesStore.dupsRemoved} dups removed){/if}
-    </span>
-  {/if}
-{/snippet}
 {#snippet windowContent()}
   <div class="ds-content">
     <div class="master-row">
@@ -134,6 +191,10 @@
             {#if cached}
               <span class="cache-age" title="Cached {cached} ago">{cached}</span>
             {/if}
+            {#if hasCachedData(src)}
+              <button class="action-btn" title="Download TLE" onclick={(e) => { e.preventDefault(); downloadTle(src); }}>{@html ICON_DOWNLOAD}</button>
+              <button class="action-btn" title="Edit as copy" onclick={(e) => { e.preventDefault(); openEditModal(src); }}>{@html ICON_EDIT}</button>
+            {/if}
           </label>
         {/each}
       </div>
@@ -152,7 +213,11 @@
               {#if sourcesStore.enabledIds.has(src.id)}
                 <span class="source-count">{getStatus(src.id)}</span>
               {/if}
-              <button class="delete-btn" title="Remove source" onclick={(e) => { e.preventDefault(); sourcesStore.removeCustom(src.id); }}>×</button>
+              {#if hasCachedData(src)}
+                <button class="action-btn" title="Download TLE" onclick={(e) => { e.preventDefault(); downloadTle(src); }}>{@html ICON_DOWNLOAD}</button>
+                <button class="action-btn" title="Edit TLE" onclick={(e) => { e.preventDefault(); openEditModal(src); }}>{@html ICON_EDIT}</button>
+              {/if}
+              <button class="delete-btn" title="Remove source" onclick={(e) => { e.preventDefault(); sourcesStore.removeCustom(src.id); }}>{@html ICON_CLOSE}</button>
             </label>
           {/each}
         </div>
@@ -165,14 +230,15 @@
           <Input class="add-input" type="text" placeholder="Name" bind:value={newName} onkeydown={onUrlKeydown} />
           <Input class="add-input" type="text" placeholder="URL" bind:value={newUrl} onkeydown={onUrlKeydown} />
           <div class="add-actions">
-            <Button onclick={submitUrl}>Add</Button>
             <Button variant="ghost" onclick={() => addingUrl = false}>Cancel</Button>
+            <Button onclick={submitUrl}>Add</Button>
           </div>
         </div>
       {:else}
         <div class="add-row">
           <Button onclick={() => addingUrl = true}>+ URL</Button>
           <Button onclick={() => fileInput?.click()}>+ File</Button>
+          <Button onclick={openPasteModal}>+ Paste</Button>
           <input type="file" bind:this={fileInput} accept=".tle,.txt,.3le" style="display:none" onchange={onFileChange}>
         </div>
       {/if}
@@ -181,24 +247,44 @@
 {/snippet}
 
 {#if uiStore.isMobile}
-  <MobileSheet id="sources" title="Data Sources" icon={dsIcon} footer={dsFooter}>
+  <MobileSheet id="sources" title="Data Sources" icon={dsIcon}>
     {@render windowContent()}
   </MobileSheet>
 {:else}
   <DraggableWindow id="data-sources" title="Data Sources" icon={dsIcon} bind:open={uiStore.dataSourcesOpen} initialX={10} initialY={260}>
     {@render windowContent()}
-    <div class="footer">
-      {@render dsFooter()}
-    </div>
   </DraggableWindow>
 {/if}
+
+<DraggableWindow title={editSourceId ? 'Edit TLE Source' : 'Paste TLE Data'} modal bind:open={editOpen}>
+  <div class="tle-editor">
+    <Input
+      class="tle-name-input"
+      type="text"
+      placeholder="Source name"
+      bind:value={editName}
+      spellcheck="false"
+      autocomplete="off"
+    />
+    <textarea
+      class="tle-textarea"
+      placeholder="Paste TLE data here...&#10;&#10;ISS (ZARYA)&#10;1 25544U 98067A   24001.00000000  .00000000  00000+0  00000+0 0    09&#10;2 25544  51.6400 100.0000 0001000   0.0000   0.0000 15.50000000    05"
+      bind:value={editText}
+      spellcheck="false"
+    ></textarea>
+    <div class="tle-editor-actions">
+      <Button variant="ghost" onclick={() => editOpen = false}>Cancel</Button>
+      <Button onclick={saveEdit}>Save</Button>
+    </div>
+  </div>
+</DraggableWindow>
 
 <style>
   .ds-content {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: 260px;
+    width: 300px;
   }
   @media (max-width: 767px) {
     .ds-content { width: 100%; }
@@ -266,16 +352,34 @@
     color: var(--text-faint);
     flex-shrink: 0;
   }
+  .action-btn {
+    background: none;
+    border: none;
+    color: var(--text-ghost);
+    cursor: pointer;
+    padding: 0 1px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    width: 14px;
+    height: 14px;
+  }
+  .action-btn :global(svg) { width: 12px; height: 12px; }
+  .action-btn:hover { color: var(--text); }
+
   .delete-btn {
     background: none;
     border: none;
     color: var(--text-ghost);
     cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    padding: 0 2px;
+    padding: 0 1px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    width: 14px;
+    height: 14px;
   }
+  .delete-btn :global(svg) { width: 10px; height: 10px; }
   .delete-btn:hover { color: var(--danger-bright); }
 
   .empty-hint {
@@ -303,12 +407,46 @@
   }
 
 
-  .footer {
-    border-top: 1px solid var(--border);
-    padding-top: 6px;
+  /* TLE editor modal — override modal-window sizing */
+  :global(.modal-window:has(.tle-editor)) {
+    max-width: 640px;
+    height: 80vh;
+    max-height: 700px;
+    display: flex;
+    flex-direction: column;
   }
-  .footer-text {
+  :global(.modal-window:has(.tle-editor) .window-body) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .tle-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+  :global(.tle-name-input) { width: 100%; }
+  .tle-textarea {
+    width: 100%;
+    flex: 1;
+    min-height: 120px;
+    resize: none;
+    background: var(--ui-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-family: 'Overpass Mono', monospace;
     font-size: 11px;
-    color: var(--text-ghost);
+    padding: 10px;
+    line-height: 1.4;
+  }
+  .tle-textarea::placeholder { color: var(--text-ghost); }
+  .tle-textarea:focus { outline: 1px solid var(--text-faint); }
+  .tle-editor-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
   }
 </style>
