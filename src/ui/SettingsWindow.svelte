@@ -5,6 +5,7 @@
   import InfoTip from './shared/InfoTip.svelte';
   import Checkbox from './shared/Checkbox.svelte';
   import Select from './shared/Select.svelte';
+  import Slider from './shared/Slider.svelte';
   import Button from './shared/Button.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { ICON_SETTINGS } from './shared/icons';
@@ -70,6 +71,11 @@
     settingsStore.applyFpsLimit(Number((e.target as HTMLInputElement).value));
   }
 
+  // --- FOV ---
+  function onFovInput(e: Event) {
+    settingsStore.applyFov(Number((e.target as HTMLInputElement).value));
+  }
+
   let fpsLabelText = $derived(
     settingsStore.fpsSliderValue === 0 ? 'Vsync' :
     settingsStore.fpsSliderValue > 480 ? 'Unlocked' :
@@ -77,6 +83,7 @@
   );
 
   let showFpsWarning = $derived(settingsStore.fpsSliderValue > 480);
+  let fovDisplay = $derived(settingsStore.fov + '°');
   let reliefDisplay = $derived((settingsStore.graphics.surfaceRelief / 10).toFixed(1) + 'x');
   let isAnalytical = $derived(settingsStore.simulation.orbitMode === 'analytical');
   let orbitsDisplay = $derived(settingsStore.simulation.orbitsToDraw.toFixed(1));
@@ -94,23 +101,23 @@
     </Select>
   </div>
   <div class="row">
-    <label>Bloom <InfoTip>UnrealBloomPass post-processing. Samples bright fragments and applies a Gaussian blur to simulate light bleeding — visible on the sun disc, city lights, and atmosphere rim.</InfoTip></label>
+    <label>Bloom<InfoTip>UnrealBloomPass post-processing. Samples bright fragments and applies a Gaussian blur to simulate light bleeding — visible on the sun disc, city lights, and atmosphere rim.</InfoTip></label>
     <Checkbox bind:checked={settingsStore.graphics.bloom} onchange={onGfxChange} />
   </div>
   <div class="row">
-    <label>Atmosphere Glow <InfoTip>Additive rim-glow shell around Earth. Uses a Fresnel-based fragment shader on a slightly oversized sphere — fragments facing the camera get more glow. Only visible when bloom is enabled.</InfoTip></label>
+    <label>Atmosphere Glow<InfoTip>Additive rim-glow shell around Earth. Uses a Fresnel-based fragment shader on a slightly oversized sphere — fragments facing the camera get more glow. Only visible when bloom is enabled.</InfoTip></label>
     <Checkbox bind:checked={settingsStore.graphics.atmosphereGlow} onchange={onGfxChange} />
   </div>
   <div class="row">
-    <label>Bump Mapping <InfoTip>Perturbs surface normals in the fragment shader using a height map. Adds visible terrain detail (mountains, craters) to Earth, Moon, and planets without increasing vertex count. Uses 4 neighboring texel samples to estimate the local gradient.</InfoTip></label>
+    <label>Bump Mapping<InfoTip>Perturbs surface normals in the fragment shader using a height map. Adds visible terrain detail (mountains, craters) to Earth, Moon, and planets without increasing vertex count. Uses 4 neighboring texel samples to estimate the local gradient.</InfoTip></label>
     <Checkbox bind:checked={settingsStore.graphics.bumpMapping} onchange={onGfxChange} />
   </div>
   <div class="row">
-    <label>Curvature AO <InfoTip>Curvature-based ambient occlusion. Computes a Laplacian from 4 height map neighbors vs. the center texel — concave areas (crater floors, valleys) get darkened, adding depth without a separate AO pass.</InfoTip></label>
+    <label>Curvature AO<InfoTip>Curvature-based ambient occlusion. Computes a Laplacian from 4 height map neighbors vs. the center texel — concave areas (crater floors, valleys) get darkened, adding depth without a separate AO pass.</InfoTip></label>
     <Checkbox bind:checked={settingsStore.graphics.curvatureAO} onchange={onGfxChange} />
   </div>
   <div class="row">
-    <label>Sphere Detail <InfoTip>
+    <label>Sphere Detail<InfoTip>
       Latitude × longitude subdivisions for planet sphere meshes. Higher counts give vertex displacement maps more geometry to deform.
       <div class="tip-options">
         <div><b>Low</b> (32×32) — 2k tris, fast</div>
@@ -128,10 +135,9 @@
       <option value="512">Ultra</option>
     </Select>
   </div>
-  <div class="row slider-row">
-    <label>Surface Relief <span class="value-label">{reliefDisplay}</span></label>
-    <input type="range" class="slider" min="0" max="100" value={settingsStore.graphics.surfaceRelief} oninput={onReliefInput}>
-  </div>
+  <Slider label="Surface Relief" display={reliefDisplay} min={0} max={100} value={settingsStore.graphics.surfaceRelief} oninput={onReliefInput}>
+    {#snippet tip()}<InfoTip>Perturbs vertex positions along normals using the height map. Controls the exaggeration multiplier — 0× is flat, 10× is extreme terrain relief.</InfoTip>{/snippet}
+  </Slider>
 
   <h4 class="section-header">Simulation</h4>
   <div class="row">
@@ -143,7 +149,7 @@
     </Select>
   </div>
   <div class="row">
-    <label>Orbit Mode <InfoTip>
+    <label>Orbit Mode<InfoTip>
       How background orbit paths are computed.
       <div class="tip-options">
         <div><b>Analytical</b> — Keplerian ellipse from TLE orbital elements (a, e, i, Ω, ω). Shape computed once at load; orientation updated with optional J2 secular corrections. Fast even with 10k+ satellites.</div>
@@ -156,7 +162,7 @@
     </Select>
   </div>
   <div class="row">
-    <label>Orbit Segments <InfoTip>
+    <label>Orbit Segments<InfoTip>
       Number of line segments per orbit ellipse. Each segment is a pair of vertices connected by GL_LINES.
       <div class="tip-options">
         <div><b>Low</b> (16) — visibly polygonal, lightest</div>
@@ -172,13 +178,12 @@
       <option value="90">Ultra</option>
     </Select>
   </div>
-  <div class="row slider-row">
-    <label>Orbits to Draw <span class="value-label">{orbitsDisplay}</span> <InfoTip>How many full orbital periods to render for highlighted satellite orbit paths. Higher values show more of the trajectory but cost more GPU/CPU.</InfoTip></label>
-    <input type="range" class="slider" min="5" max="50" step="5" value={settingsStore.simulation.orbitsToDraw * 10} oninput={onOrbitsToDrawInput}>
-  </div>
+  <Slider label="Orbits to Draw" display={orbitsDisplay} min={5} max={50} step={5} value={settingsStore.simulation.orbitsToDraw * 10} oninput={onOrbitsToDrawInput}>
+    {#snippet tip()}<InfoTip>How many full orbital periods to render for highlighted satellite orbit paths. Higher values show more of the trajectory but cost more GPU/CPU.</InfoTip>{/snippet}
+  </Slider>
   {#if isAnalytical}
     <div class="row">
-      <label>J2 Precession <InfoTip>
+      <label>J2 Precession<InfoTip>
         Applies J2 secular perturbation to orbit orientation. Earth's oblateness causes RAAN to regress and argument of perigee to advance — about 5°/day for typical LEO orbits.
         <div class="tip-options">
           <div><b>On</b> — Ω(t) = Ω₀ + Ω̇·Δt, ω(t) = ω₀ + ω̇·Δt</div>
@@ -188,7 +193,7 @@
       <Checkbox bind:checked={settingsStore.simulation.j2Precession} onchange={onSimChange} />
     </div>
     <div class="row">
-      <label>Atmospheric Drag <InfoTip>
+      <label>Atmospheric Drag<InfoTip>
         Uses the TLE first derivative of mean motion (ṅ, ndot) to model orbital decay. Every 6 hours of sim-time, semi-major axis is recomputed: a(t) = (μ / n(t)²)^⅓ where n(t) = n₀ + ṅ·Δt. Perifocal vertices are rebuilt if any satellite's a drifts &gt;0.1 km.
         <div class="tip-options">
           <div><b>On</b> — LEO orbits gradually shrink</div>
@@ -199,7 +204,7 @@
     </div>
   {/if}
   <div class="row">
-    <label>Update Quality <InfoTip>
+    <label>Update Quality<InfoTip>
       Satellites are divided into N batches. Each frame, one batch gets a full SGP4 position update. N adapts to time warp: at high warp, more batches run per frame automatically.
       <div class="tip-options">
         <div><b>Ultra</b> — every satellite updated every frame, zero staleness</div>
@@ -220,13 +225,13 @@
   </div>
 
   <h4 class="section-header">General</h4>
-  <div class="row slider-row">
-    <label>FPS Limit <span class="value-label">{fpsLabelText}</span></label>
-    <input type="range" class="slider" min="0" max="482" value={settingsStore.fpsSliderValue} oninput={onFpsInput}>
-  </div>
+  <Slider label="FPS Limit" display={fpsLabelText} min={0} max={482} value={settingsStore.fpsSliderValue} oninput={onFpsInput} />
   {#if showFpsWarning}
     <div class="warning">May reduce UI responsiveness</div>
   {/if}
+  <Slider label="Field of View" display={fovDisplay} min={10} max={120} value={settingsStore.fov} oninput={onFovInput}>
+    {#snippet tip()}<InfoTip>Camera vertical field of view. Lower values give a telephoto/zoomed-in effect, higher values give a wide-angle/fisheye look. Default is 45°.</InfoTip>{/snippet}
+  </Slider>
   <div class="row">
     <label>Theme</label>
     <Button size="xs" onclick={() => { uiStore.themeEditorOpen = !uiStore.themeEditorOpen; if (uiStore.isMobile) uiStore.openMobileSheet('theme-editor'); }}>
@@ -269,36 +274,6 @@
     margin-bottom: 6px;
   }
   .row label { color: var(--text-dim); font-size: 12px; }
-  .slider-row { flex-direction: column; align-items: stretch; gap: 4px; }
-  .slider-row label { display: flex; justify-content: space-between; }
-  .slider {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 4px;
-    background: var(--border);
-    outline: none;
-    cursor: pointer;
-  }
-  .slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    background: var(--text-dim);
-    border: none;
-    cursor: pointer;
-  }
-  .slider::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    background: var(--text-dim);
-    border: none;
-    cursor: pointer;
-  }
-  .slider:hover::-webkit-slider-thumb { background: var(--text); }
-  .slider:hover::-moz-range-thumb { background: var(--text); }
-  .value-label { color: var(--text-muted); }
   .warning {
     font-size: 11px;
     color: var(--warning);

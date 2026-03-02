@@ -14,7 +14,7 @@
     color: var(--text-ghost);
     font-size: 11px;
     position: relative;
-    margin-left: 4px;
+    margin-left: 7px;
   }
   .info-tip:hover { color: var(--text-dim); }
   .info-tip-content {

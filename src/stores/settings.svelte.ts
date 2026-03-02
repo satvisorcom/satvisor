@@ -6,11 +6,13 @@ class SettingsStore {
   simulation = $state<SimulationSettings>(getSimPresetSettings(DEFAULT_SIM_PRESET));
   fpsLimit = $state(-1); // -1=vsync, 0=unlocked, >0=cap
   fpsSliderValue = $state(0); // raw slider value (0=Vsync, 1-480=cap, >480=Unlocked)
+  fov = $state(45); // camera field of view in degrees (10–120)
 
   // Callbacks registered by App during init
   onGraphicsChange: ((g: GraphicsSettings) => void) | null = null;
   onSimulationChange: ((s: SimulationSettings) => void) | null = null;
   onFpsLimitChange: ((limit: number) => void) | null = null;
+  onFovChange: ((fov: number) => void) | null = null;
 
   get graphicsPreset(): string | null {
     return findMatchingPreset(this.graphics);
@@ -39,6 +41,9 @@ class SettingsStore {
       this.fpsSliderValue = v;
       this.fpsLimit = v === 0 ? -1 : v > 480 ? 0 : v;
     }
+    const savedFov = localStorage.getItem('threescope_fov');
+    if (savedFov !== null) this.fov = Math.max(10, Math.min(120, Number(savedFov)));
+
   }
 
   applyGraphics(g: GraphicsSettings) {
@@ -58,6 +63,12 @@ class SettingsStore {
     this.fpsLimit = sliderValue === 0 ? -1 : sliderValue > 480 ? 0 : sliderValue;
     localStorage.setItem('threescope_fps_limit', String(sliderValue));
     this.onFpsLimitChange?.(this.fpsLimit);
+  }
+
+  applyFov(value: number) {
+    this.fov = Math.max(10, Math.min(120, value));
+    localStorage.setItem('threescope_fov', String(this.fov));
+    this.onFovChange?.(this.fov);
   }
 }
 

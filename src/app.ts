@@ -184,7 +184,7 @@ export class App {
     document.getElementById('svelte-ui')!.before(this.renderer.domElement);
 
     // Cameras
-    this.camera3d = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 10000);
+    this.camera3d = new THREE.PerspectiveCamera(settingsStore.fov, window.innerWidth / window.innerHeight, 0.01, 10000);
     this.scene3d = new THREE.Scene();
     this.scene3d.background = new THREE.Color(palette.bg);
 
@@ -203,7 +203,7 @@ export class App {
     // On mobile, zoom in so the earth fills the screen nicely
     if (window.innerWidth < MOBILE_BREAKPOINT) {
       const earthR = EARTH_RADIUS_KM / DRAW_SCALE;
-      const fovRad = 45 * DEG2RAD;
+      const fovRad = settingsStore.fov * DEG2RAD;
       const aspect = window.innerWidth / window.innerHeight;
       // Use horizontal half-FOV (narrower on portrait) to fit the earth's width
       const hFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
@@ -645,6 +645,12 @@ export class App {
     // FPS limit changed from SettingsWindow
     settingsStore.onFpsLimitChange = (limit: number) => {
       this.fpsLimit = limit;
+    };
+
+    // FOV changed from SettingsWindow
+    settingsStore.onFovChange = (fov: number) => {
+      this.camera3d.fov = fov;
+      this.camera3d.updateProjectionMatrix();
     };
 
     // Multi-source loading (debounced: rapid toggles coalesce into one loadSources call)
