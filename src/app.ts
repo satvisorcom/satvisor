@@ -336,7 +336,7 @@ export class App {
     const [dayTex, nightTex, satTex, starTex, cloudTex, moonTex, earthNormal, earthDisp, moonDisp] = await Promise.all([
       load('/textures/earth/color.webp'),
       load('/textures/earth/night.webp'),
-      load('/textures/ui/sat_icon.png'),
+      load('/textures/ui/sat_sprite.png'),
       load('/textures/stars.webp'),
       load('/textures/earth/clouds.webp'),
       load('/textures/moon/color.webp'),

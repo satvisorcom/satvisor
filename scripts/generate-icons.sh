@@ -61,19 +61,19 @@ echo ""
 echo "Favicon:"
 render 256 public/textures/ui/sat_icon.png
 
-# ── Tauri desktop icons ──
+# ── Tauri desktop icons (with background, like maskable) ──
 echo ""
 echo "Tauri icons:"
-render 512 src-tauri/icons/icon.png
-render 32  src-tauri/icons/32x32.png
-render 128 src-tauri/icons/128x128.png
-render 256 "src-tauri/icons/128x128@2x.png"
+render_maskable 512 src-tauri/icons/icon.png
+render_maskable 32  src-tauri/icons/32x32.png
+render_maskable 128 src-tauri/icons/128x128.png
+render_maskable 256 "src-tauri/icons/128x128@2x.png"
 
 # ICO (Windows) — multi-size: 16, 32, 48, 256
 echo ""
 echo "Windows .ico:"
 for s in 16 32 48 256; do
-  render "$s" "$TMP/ico_${s}.png"
+  render_maskable "$s" "$TMP/ico_${s}.png"
 done
 icotool -c -o src-tauri/icons/icon.ico \
   "$TMP/ico_16.png" "$TMP/ico_32.png" "$TMP/ico_48.png" "$TMP/ico_256.png"
@@ -84,7 +84,7 @@ if command -v png2icns &>/dev/null; then
   echo ""
   echo "macOS .icns:"
   for s in 16 32 128 256 512; do
-    render "$s" "$TMP/icns_${s}.png"
+    render_maskable "$s" "$TMP/icns_${s}.png"
   done
   png2icns src-tauri/icons/icon.icns \
     "$TMP/icns_16.png" "$TMP/icns_32.png" "$TMP/icns_128.png" \
