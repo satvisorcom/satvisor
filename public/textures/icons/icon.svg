@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Visor/eye shape -->
-  <path d="M 48 256 Q 256 56 464 256" fill="none" stroke="#fff" stroke-width="36" stroke-linecap="round"/>
-  <path d="M 464 256 Q 256 456 48 256" fill="none" stroke="#fff" stroke-width="36" stroke-linecap="round"/>
+  <!-- Visor/eye shape — rotated diagonal, bottom-left to top-right -->
+  <g transform="rotate(-45 256 256)">
+    <!-- Upper lid -->
+    <path d="M 20 256 Q 256 -20 492 256" fill="none" stroke="#fff" stroke-width="36" stroke-linecap="round"/>
+    <!-- Lower lid -->
+    <path d="M 492 256 Q 256 532 20 256" fill="none" stroke="#fff" stroke-width="36" stroke-linecap="round"/>
+  </g>
 
-  <!-- Satellite — minimal geometric, tilted 30° -->
-  <g transform="translate(256,256) rotate(-30)">
+  <!-- Satellite — slightly rotated -->
+  <g transform="translate(256,256) rotate(-45)">
     <!-- Solar panels -->
-    <rect x="-72" y="-12" width="44" height="24" rx="4" fill="#fff"/>
-    <rect x="28"  y="-12" width="44" height="24" rx="4" fill="#fff"/>
-    <!-- Body (slightly larger, connects panels) -->
-    <rect x="-18" y="-18" width="36" height="36" rx="8" fill="#fff"/>
+    <rect x="-115" y="-20" width="72" height="40" rx="6" fill="#fff"/>
+    <rect x="43"   y="-20" width="72" height="40" rx="6" fill="#fff"/>
+    <!-- Body -->
+    <rect x="-30" y="-30" width="60" height="60" rx="12" fill="#fff"/>
   </g>
 </svg>
