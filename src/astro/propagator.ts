@@ -77,6 +77,7 @@ export function parseTLE(name: string, line1: string, line2: string): Satellite 
       argPerigeeRate,
       ndot,
       stdMag: stdmagMap.get(noradId) ?? null,
+      visualMag: null,
       decayed: false,
     };
   } catch {

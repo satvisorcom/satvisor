@@ -5,6 +5,8 @@ import { parseHexColor } from '../config';
 import { calculatePosition } from '../astro/propagator';
 import { ORBIT_COLORS } from './orbit-renderer';
 import { uiStore } from '../stores/ui.svelte';
+import { earthShadowFactor } from '../astro/eclipse';
+import { estimateVisualMagnitude, computePhaseAngle, slantRange } from '../astro/magnitude';
 
 export class SatelliteManager {
   points: THREE.Points;
@@ -25,6 +27,7 @@ export class SatelliteManager {
   private _prevCamY = NaN;
   private _prevCamZ = NaN;
   private _prevFade = NaN;
+  private _magBloomTimer = 0;
 
   constructor(satTexture: THREE.Texture, maxSats = 25000) {
     this.maxSats = maxSats;
@@ -155,7 +158,11 @@ export class SatelliteManager {
     }
   }
 
-  /** Update 3D point cloud visuals (geometry, colors, alpha, occlusion). */
+  /**
+   * Update 3D point cloud visuals (geometry, colors, alpha, occlusion).
+   * All positions (cameraPos, sunDir, obsPos, sat.currentPos) are in render coords
+   * (x=eci.x, y=eci.z, z=-eci.y) — NOT standard ECI.
+   */
   update(
     satellites: Satellite[],
     cameraPos: THREE.Vector3,
@@ -166,17 +173,28 @@ export class SatelliteManager {
     hideUnselected: boolean,
     colorConfig: { normal: string; highlighted: string; selected: string },
     bloomEnabled = false,
-    fadingInSats: Set<Satellite> = new Set()
+    fadingInSats: Set<Satellite> = new Set(),
+    /** Sun direction in render coords (from calculateSunPosition) */
+    sunDir: { x: number; y: number; z: number } | null = null,
+    /** Observer position in render coords (ECI→render converted) */
+    obsPos: { x: number; y: number; z: number } | null = null,
+    dt = 0,
   ) {
     const count = Math.min(satellites.length, this.maxSats);
     this.points.geometry.drawRange.count = count;
 
     // --- Dirty checks: skip buffer uploads when data hasn't changed ---
     const hiddenVersion = uiStore.hiddenSelectedSatsVersion;
+    // Refresh magnitude-based brightness every ~0.5s (triggers bloom when enabled,
+    // but also provides visual brightness differentiation without bloom)
+    this._magBloomTimer += dt;
+    const magBloomTick = sunDir && obsPos && this._magBloomTimer >= 0.5;
+    if (magBloomTick) this._magBloomTimer = 0;
     const colorSizeDirty = hoveredSat !== this._prevHoveredSat
       || selectedSatsVersion !== this._prevSelectedVersion
       || bloomEnabled !== this._prevBloomEnabled
-      || hiddenVersion !== this._prevHiddenVersion;
+      || hiddenVersion !== this._prevHiddenVersion
+      || magBloomTick;
 
     const cameraMoved = cameraPos.x !== this._prevCamX
       || cameraPos.y !== this._prevCamY
@@ -238,9 +256,28 @@ export class SatelliteManager {
           this.colorAttr.array[i * 3 + 1] = rc[1] * 0.9;
           this.colorAttr.array[i * 3 + 2] = rc[2] * 0.9;
         } else {
-          this.colorAttr.array[i * 3] = cNormal.r;
-          this.colorAttr.array[i * 3 + 1] = cNormal.g;
-          this.colorAttr.array[i * 3 + 2] = cNormal.b;
+          let br = cNormal.r, bg = cNormal.g, bb = cNormal.b;
+          let magBoost = 1.0;
+          // Magnitude-based bloom: sunlit sats with known stdMag get brightness
+          // boost proportional to visual magnitude (brighter sat → more bloom).
+          // All positions are in render coords (consistent space for dot products / distances).
+          if (sunDir && obsPos && sat.stdMag !== null) {
+            const sf = earthShadowFactor(sat.currentPos.x, sat.currentPos.y, sat.currentPos.z, sunDir);
+            if (sf > 0) {
+              const range = slantRange(sat.currentPos, obsPos);
+              const phase = computePhaseAngle(sat.currentPos, sunDir, obsPos);
+              const mag = estimateVisualMagnitude(sat.stdMag, range, phase, 45);
+              // Scale: mag -2 → full boost, mag 5 → no boost
+              if (mag < 5) {
+                const t = Math.max(0, Math.min(1, (5 - mag) / 7));
+                magBoost = 1.0 + t * 4.0; // 1.0 … 5.0
+                br *= magBoost; bg *= magBoost; bb *= magBoost;
+              }
+            }
+          }
+          this.colorAttr.array[i * 3] = br;
+          this.colorAttr.array[i * 3 + 1] = bg;
+          this.colorAttr.array[i * 3 + 2] = bb;
         }
 
         this.sizeAttr.array[i] = (selectedSats.has(sat) || isHovered) ? 1.5 : 1.0;

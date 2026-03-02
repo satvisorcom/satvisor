@@ -65,6 +65,7 @@ self.onmessage = (e: MessageEvent<{ entries: [string, string, string][]; id: num
         argPerigeeRate,
         ndot: 2.0 * sr.ndot * NDOT_CONV,
         stdMag: stdmagMap.get(noradId) ?? null,
+        visualMag: null,
         decayed: false,
       });
     } catch {

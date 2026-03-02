@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DEG2RAD } from '../constants';
 import { epochToJulianDate, normalizeEpoch } from './epoch';
 
+/** Sun direction in **render coords** (x=eci.x, y=eci.z, z=-eci.y). NOT standard ECI. */
 export function calculateSunPosition(currentEpoch: number): THREE.Vector3 {
   currentEpoch = normalizeEpoch(currentEpoch);
   const jd = epochToJulianDate(currentEpoch);

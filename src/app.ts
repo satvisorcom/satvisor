@@ -1410,12 +1410,18 @@ export class App {
       const showNight = earthMode || this.activeLock === TargetLock.MOON || this.activeLock === TargetLock.PLANET;
       uiStore.nightToggleVisible = showNight;
       if (earthMode) {
+        // Observer position in render coords for magnitude-based icon brightness
+        let obsRenderPos: { x: number; y: number; z: number } | null = null;
+        if (observerStore.isSet) {
+          const oe = observerEci(observerStore.location.lat, observerStore.location.lon, observerStore.location.alt, gmstDeg * DEG2RAD);
+          obsRenderPos = { x: oe.x, y: oe.z, z: -oe.y }; // ECI → render coords
+        }
         this.satManager.update(
           this.satellites, this.camera3d.position,
           this.hoveredSat, this.selectedSats, this.selectedSatsVersion,
           this.unselectedFade, this.hideUnselected,
           { normal: this.cfg.satNormal, highlighted: this.cfg.satHighlighted, selected: this.cfg.satSelected },
-          this.bloomEnabled, this.fadingInSats
+          this.bloomEnabled, this.fadingInSats, sunEciDir, obsRenderPos, dt,
         );
 
         this.orbitRenderer.update(

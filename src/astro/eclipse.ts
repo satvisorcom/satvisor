@@ -8,7 +8,8 @@ import { epochToJulianDate, normalizeEpoch } from './epoch';
 import { getAzEl } from './az-el';
 
 /**
- * Compute unit sun direction in standard ECI (Earth-Centered Inertial) coordinates.
+ * Compute unit sun direction in **standard ECI** (Earth-Centered Inertial) coordinates.
+ * NOT render coords — use calculateSunPosition() from sun.ts for render coords.
  * Same low-precision solar ephemeris as sun.ts but returns plain {x,y,z}
  * instead of THREE.Vector3 for Web Worker compatibility.
  *
@@ -57,7 +58,8 @@ const UMBRA_HALF = Math.asin((SUN_RADIUS_KM - EARTH_RADIUS_KM) / SUN_DISTANCE_KM
 const PENUMBRA_HALF = Math.asin((SUN_RADIUS_KM + EARTH_RADIUS_KM) / SUN_DISTANCE_KM);
 
 /**
- * Compute Earth shadow factor for a satellite at ECI position (km).
+ * Compute Earth shadow factor for a satellite position (km).
+ * Sat position and sunDir must be in the same coordinate system (standard ECI or render coords).
  * Returns 1.0 = fully sunlit, 0.0 = fully in umbra, intermediate = penumbra.
  *
  * Conical model: umbra narrows, penumbra widens with distance from Earth.

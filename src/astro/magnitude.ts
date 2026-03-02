@@ -46,7 +46,7 @@ export function airmass(elevationDeg: number): number {
  * Phase angle = 0° when observer is behind the sun (full illumination),
  *             = 180° when satellite is between observer and sun (backlit).
  *
- * All positions in standard ECI (km).
+ * All positions must be in the same coordinate system (standard ECI or render coords).
  */
 export function computePhaseAngle(
   satEci: { x: number; y: number; z: number },
@@ -72,7 +72,8 @@ export function computePhaseAngle(
 }
 
 /**
- * Compute observer position in standard ECI (km) from geodetic coordinates.
+ * Compute observer position in **standard ECI** (km) from geodetic coordinates.
+ * Returns standard ECI — convert to render coords (x, z, -y) before mixing with sat.currentPos.
  * Simplified: assumes spherical Earth (good enough for magnitude estimation).
  *
  * @param latDeg  Geodetic latitude (degrees)
@@ -97,7 +98,8 @@ export function observerEci(
 }
 
 /**
- * Compute slant range (km) between satellite and observer, both in ECI.
+ * Compute slant range (km) between satellite and observer.
+ * Both positions must be in the same coordinate system (standard ECI or render coords).
  */
 export function slantRange(
   satEci: { x: number; y: number; z: number },

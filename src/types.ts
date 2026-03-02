@@ -21,6 +21,7 @@ export interface Satellite {
   argPerigeeRate: number; // dω/dt in rad/s
   ndot: number;           // dn/dt in rad/s² (from TLE first derivative of mean motion)
   stdMag: number | null;   // standard visual magnitude (at 1000 km, 90° phase), null if unknown
+  visualMag: number | null; // current apparent magnitude (null if eclipsed, unknown, or no observer)
   decayed: boolean;        // true when SGP4 returns sub-surface position (orbit decayed / stale TLE)
 }
 
