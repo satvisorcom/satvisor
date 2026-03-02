@@ -38,7 +38,7 @@ self.onmessage = (e: MessageEvent<{ entries: [string, string, string][]; id: num
     try {
       const satrec = twoline2satrec(line1, line2);
       const sr = satrec as any;
-      const noradId: number = sr.satnum;
+      const noradId = Number(sr.satnum);
       const meanMotion = sr.no / 60;
       const semiMajorAxis = sr.a * EARTH_RADIUS_EQ_KM;
       const inclination: number = sr.inclo;

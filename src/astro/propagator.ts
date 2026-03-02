@@ -40,7 +40,7 @@ export function parseTLE(name: string, line1: string, line2: string): Satellite 
 
     // Read orbital elements directly from satrec (already parsed by twoline2satrec)
     const sr = satrec as any;
-    const noradId: number = sr.satnum;
+    const noradId = Number(sr.satnum);
     const epochDays = sr.epochyr * 1000 + sr.epochdays;
     const inclination: number = sr.inclo;       // rad
     const raan: number = sr.nodeo;              // rad
