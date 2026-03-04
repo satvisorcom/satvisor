@@ -87,6 +87,7 @@
 
   let tab = $state<'radar' | 'setup'>('radar');
   let rateDisplay = $derived(`${(rotatorStore.updateIntervalMs / 1000).toFixed(1)}s`);
+  let tolDisplay = $derived(`${rotatorStore.tolerance.toFixed(1)}°`);
 
   // In sky view, rotate the radar so the viewer's look direction is at the top
   let headingRad = $derived(uiStore.viewMode === ViewMode.VIEW_SKY ? uiStore.skyHeading : 0);
@@ -924,6 +925,11 @@
         min={100} max={5000} step={100} value={rotatorStore.updateIntervalMs}
         oninput={(e) => rotatorStore.setUpdateInterval(Number((e.target as HTMLInputElement).value))} />
 
+      {#snippet tolTip()}<InfoTip>Minimum error before sending a new position command. Reduces wear on the rotator gears. Set to 0 for continuous tracking.</InfoTip>{/snippet}
+      <Slider label="Tolerance" display={tolDisplay} tip={tolTip}
+        min={0} max={5} step={0.1} value={rotatorStore.tolerance}
+        oninput={(e) => rotatorStore.setTolerance(Number((e.target as HTMLInputElement).value))} />
+
       <div class="rot-row">
         <label>Park position</label>
         <select class="rot-select" value={rotatorStore.parkPreset}
@@ -992,14 +998,17 @@
             between the browser and rotctld:
             <ol>
               <li>Start rotctld:<br><code>rotctld -m 603 -r /dev/ttyUSB0 -s 9600 -T 0.0.0.0</code></li>
-              <li>Bridge with one of:<br>
-                <code>pip install websockify && websockify 4534 localhost:4533</code><br>
-                <code>websocat -t ws-l:0.0.0.0:4534 tcp:127.0.0.1:4533</code>
+              <li>Install a bridge (pick one):<br>
+                <code>pip install websockify</code><br>
+                <code>cargo install websocat</code>
+              </li>
+              <li>Run the bridge:<br>
+                <code>websockify 4534 localhost:4533</code><br>
+                <code>websocat --binary ws-l:0.0.0.0:4534 tcp:127.0.0.1:4533</code>
               </li>
               <li>Enter <code>ws://localhost:4534</code> as the URL above</li>
               <li>Switch to the Radar tab and click Connect</li>
             </ol>
-            <span class="guide-note">websockify (Python) or websocat (single Rust binary) — both bridge WebSocket to TCP.</span>
           {/if}
         </div>
       </details>

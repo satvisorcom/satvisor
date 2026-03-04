@@ -27,7 +27,7 @@ export class RotctldDriver implements RotatorDriver {
   }
 
   async connect(options: RotatorConnectOptions): Promise<void> {
-    const url = options.wsUrl ?? 'ws://localhost:4533';
+    const url = options.wsUrl ?? 'ws://localhost:4534';
     return new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url, ['binary']);
       ws.binaryType = 'arraybuffer';
@@ -169,10 +169,33 @@ export class RotctldDriver implements RotatorDriver {
   }
 }
 
+/**
+ * Hamlib error codes → human-readable descriptions.
+ * @see https://github.com/Hamlib/Hamlib/blob/master/include/hamlib/rig.h — rig_errcode_e
+ */
+const RPRT_ERRORS: Record<string, string> = {
+  '-1': 'Invalid parameter (check az/el limits)',
+  '-2': 'Invalid configuration',
+  '-3': 'Out of memory',
+  '-4': 'Not implemented',
+  '-5': 'Communication timed out',
+  '-6': 'I/O error',
+  '-7': 'Internal error',
+  '-8': 'Protocol error',
+  '-9': 'Command rejected',
+  '-10': 'Argument truncated',
+  '-11': 'Not available',
+  '-12': 'Target not available',
+  '-13': 'Bus error',
+  '-14': 'Bus busy / collision',
+  '-17': 'Argument out of range',
+};
+
 /** Throw if rotctld returned an error code (RPRT -N). */
 function checkRprt(response: string): void {
   const match = response.match(/RPRT\s+(-\d+)/);
   if (match) {
-    throw new Error(`rotctld error: RPRT ${match[1]}`);
+    const desc = RPRT_ERRORS[match[1]] ?? `unknown error ${match[1]}`;
+    throw new Error(desc);
   }
 }

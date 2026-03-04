@@ -5,6 +5,12 @@ import { timeStore } from './time.svelte';
 
 const PREFIX = 'satvisor_rotator_';
 
+/** Shortest angular distance between two azimuth values (0–360°), always positive. */
+function azDist(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
 export type RotatorStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export type ParkPreset = 'north' | 'south' | 'zenith' | 'custom';
@@ -22,8 +28,9 @@ class RotatorStore {
   mode = $state<RotatorMode>('serial');
   serialProtocol = $state<SerialProtocol>('gs232');
   baudRate = $state(9600);
-  wsUrl = $state('ws://localhost:4533');
+  wsUrl = $state('ws://localhost:4534');
   updateIntervalMs = $state(500);
+  tolerance = $state(0.5);
   parkPreset = $state<ParkPreset>('north');
   parkAz = $state(0);
   parkEl = $state(0);
@@ -53,8 +60,8 @@ class RotatorStore {
 
   // Internals
   private driver: RotatorDriver | null = null;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private trackTimer: ReturnType<typeof setInterval> | null = null;
+  private _timer: ReturnType<typeof setTimeout> | null = null;
+  private _tickPhase: 'poll' | 'track' = 'poll';
   private _wasSlewing = false;
   private _errHistory: number[] = [];
   private _highErrSince: number | null = null;
@@ -65,6 +72,8 @@ class RotatorStore {
   private _wasTracking = false;
   private _pollFailCount = 0;
   private _cmdFailCount = 0;
+  private _lastSentAz: number | null = null;
+  private _lastSentEl: number | null = null;
 
   async connect(): Promise<void> {
     if (this.status === 'connected' || this.status === 'connecting') return;
@@ -147,6 +156,8 @@ class RotatorStore {
     this._wasTracking = false;
     this._pollFailCount = 0;
     this._cmdFailCount = 0;
+    this._lastSentAz = null;
+    this._lastSentEl = null;
     this.nextAosEpoch = 0;
     this.nextAosSatName = '';
   }
@@ -155,6 +166,8 @@ class RotatorStore {
     if (!this.driver?.connected) return;
     this.targetAz = az;
     this.targetEl = el;
+    this._lastSentAz = az;
+    this._lastSentEl = el;
     try {
       await this.driver.setPosition(az, el);
     } catch (e: any) {
@@ -167,6 +180,8 @@ class RotatorStore {
     this.autoTrack = false;
     this.targetAz = null;
     this.targetEl = null;
+    this._lastSentAz = null;
+    this._lastSentEl = null;
     try {
       await this.driver.stop();
     } catch (e: any) {
@@ -235,121 +250,174 @@ class RotatorStore {
     return null;
   }
 
+  /**
+   * Single interleaved timer: alternates poll → track → poll → track.
+   * - Adaptive polling: polls at updateIntervalMs while slewing/tracking,
+   *   slows to 3× when idle (nothing moving, no target).
+   * - Skip-if-unchanged: suppresses redundant track commands when target
+   *   hasn't moved since the last send (within 0.05°).
+   */
   private startTimers(): void {
-    // Poll position readback
-    this.pollTimer = setInterval(async () => {
-      if (!this.driver?.connected) return;
-      try {
-        const pos = await this.driver.getPosition();
-        if (pos === null) {
-          // Keep last known position, count consecutive failures
-          this._pollFailCount++;
-          if (this._pollFailCount >= 5) {
-            this.error = 'Position readback lost';
-          }
-          return;
+    this._tickPhase = 'poll';
+    this._lastSentAz = null;
+    this._lastSentEl = null;
+    this.scheduleTick();
+  }
+
+  private scheduleTick(): void {
+    if (this._timer !== null) return;
+    // Half the update interval per phase → full cycle = updateIntervalMs
+    const halfInterval = this.updateIntervalMs / 2;
+    // Adaptive poll rate based on rotator velocity:
+    //   ≥2°/s (fast slew)  → halfInterval (fastest, configured rate)
+    //   ~0°/s (stationary)  → 3s (slow idle poll)
+    // Linear interpolation between them. Track phase always uses halfInterval.
+    let delay = halfInterval;
+    if (this._tickPhase === 'poll') {
+      const idleDelay = Math.max(halfInterval, 3000);
+      const t = Math.min(1, this.velocityDegS / 2);  // 0 = idle, 1 = fast
+      delay = halfInterval + (idleDelay - halfInterval) * (1 - t);
+    }
+    this._timer = setTimeout(() => {
+      this._timer = null;
+      this.tick();
+    }, delay);
+  }
+
+  private async tick(): Promise<void> {
+    if (!this.driver?.connected) return;
+
+    if (this._tickPhase === 'poll') {
+      await this.tickPoll();
+      // Next phase: track (only if auto-tracking, otherwise skip straight to poll)
+      this._tickPhase = this.autoTrack ? 'track' : 'poll';
+    } else {
+      await this.tickTrack();
+      this._tickPhase = 'poll';
+    }
+
+    if (this.driver?.connected) this.scheduleTick();
+  }
+
+  private async tickPoll(): Promise<void> {
+    try {
+      const pos = await this.driver!.getPosition();
+      if (pos === null) {
+        this._pollFailCount++;
+        if (this._pollFailCount >= 5) this.error = 'Position readback lost';
+        return;
+      }
+      // Decrement toward 0; clear error once recovered (avoids flicker on noisy links)
+      if (this._pollFailCount > 0) {
+        this._pollFailCount = Math.max(0, this._pollFailCount - 2);
+        if (this._pollFailCount === 0 && this.error === 'Position readback lost') this.error = null;
+      }
+
+      this.actualAz = pos.az;
+      this.actualEl = pos.el;
+
+      // Compute angular velocity (°/s)
+      const now = performance.now();
+      if (this._prevAz !== null && this._prevEl !== null && this._prevTime !== null) {
+        const dt = (now - this._prevTime) / 1000;
+        if (dt > 0.05) {
+          const dAz = azDist(pos.az, this._prevAz);
+          const dEl = Math.abs(pos.el - this._prevEl);
+          const rate = Math.sqrt(dAz * dAz + dEl * dEl) / dt;
+          this._velocityBuf.push(rate);
+          if (this._velocityBuf.length > 4) this._velocityBuf.shift();
+          this.velocityDegS = this._velocityBuf.reduce((a, b) => a + b, 0) / this._velocityBuf.length;
         }
-        // Decrement toward 0; clear error once recovered (avoids flicker on noisy links)
-        if (this._pollFailCount > 0) {
-          this._pollFailCount = Math.max(0, this._pollFailCount - 2);
-          if (this._pollFailCount === 0 && this.error === 'Position readback lost') this.error = null;
-        }
+      }
+      this._prevAz = pos.az;
+      this._prevEl = pos.el;
+      this._prevTime = now;
 
-        this.actualAz = pos.az;
-        this.actualEl = pos.el;
+      // Compute slewing state with hysteresis
+      if (this.targetAz !== null && this.targetEl !== null) {
+        const maxErr = Math.max(azDist(pos.az, this.targetAz), Math.abs(pos.el - this.targetEl));
+        this.isSlewing = this._wasSlewing ? maxErr > 0.5 : maxErr > 2;
+        this._wasSlewing = this.isSlewing;
 
-        // Compute angular velocity (°/s)
-        const now = performance.now();
-        if (this._prevAz !== null && this._prevEl !== null && this._prevTime !== null) {
-          const dt = (now - this._prevTime) / 1000;
-          if (dt > 0.05) {
-            const dAz = Math.abs(pos.az - this._prevAz);
-            const dEl = Math.abs(pos.el - this._prevEl);
-            const rate = Math.sqrt(dAz * dAz + dEl * dEl) / dt;
-            this._velocityBuf.push(rate);
-            if (this._velocityBuf.length > 4) this._velocityBuf.shift();
-            this.velocityDegS = this._velocityBuf.reduce((a, b) => a + b, 0) / this._velocityBuf.length;
-          }
-        }
-        this._prevAz = pos.az;
-        this._prevEl = pos.el;
-        this._prevTime = now;
+        // Warning: rotator can't keep up (error not decreasing)
+        this._errHistory.push(maxErr);
+        if (this._errHistory.length > 6) this._errHistory.shift();
 
-        // Compute slewing state with hysteresis
-        if (this.targetAz !== null && this.targetEl !== null) {
-          const maxErr = Math.max(Math.abs(pos.az - this.targetAz), Math.abs(pos.el - this.targetEl));
-          this.isSlewing = this._wasSlewing ? maxErr > 0.5 : maxErr > 2;
-          this._wasSlewing = this.isSlewing;
-
-          // Warning: rotator can't keep up (error not decreasing)
-          this._errHistory.push(maxErr);
-          if (this._errHistory.length > 6) this._errHistory.shift();
-
-          // Sustained: error stays >5° for 3+ seconds AND not shrinking
-          const high = maxErr > 5;
-          if (high) {
-            if (this._highErrSince === null) this._highErrSince = Date.now();
-          } else {
-            this._highErrSince = null;
-          }
-          const sustainedHigh = this._highErrSince !== null && Date.now() - this._highErrSince > 3000;
-
-          // Check if error is shrinking — if so, rotator is making progress, no warning
-          let shrinking = false;
-          if (this._errHistory.length >= 3) {
-            const h = this._errHistory;
-            shrinking = h[h.length - 1] < h[h.length - 2] - 0.3
-                     && h[h.length - 2] < h[h.length - 3] - 0.3;
-          }
-
-          this.slewWarning = this.autoTrack && sustainedHigh && !shrinking;
+        const high = maxErr > 5;
+        if (high) {
+          if (this._highErrSince === null) this._highErrSince = Date.now();
         } else {
-          this.isSlewing = false;
-          this._wasSlewing = false;
-          this.slewWarning = false;
-          this._errHistory.length = 0;
           this._highErrSince = null;
         }
+        const sustainedHigh = this._highErrSince !== null && Date.now() - this._highErrSince > 3000;
 
-        // Clear target once arrived (manual slew only, not auto-track)
-        if (!this.autoTrack && this.targetAz !== null && this.targetEl !== null) {
-          const errAz = Math.abs(pos.az - this.targetAz);
-          const errEl = Math.abs(pos.el - this.targetEl);
-          if (errAz < 0.5 && errEl < 0.5) {
-            this.targetAz = null;
-            this.targetEl = null;
-          }
+        let shrinking = false;
+        if (this._errHistory.length >= 3) {
+          const h = this._errHistory;
+          shrinking = h[h.length - 1] < h[h.length - 2] - 0.3
+                   && h[h.length - 2] < h[h.length - 3] - 0.3;
         }
-      } catch {
-        this._pollFailCount++;
-        if (this._pollFailCount >= 5) {
-          this.error = 'Position readback lost';
+
+        this.slewWarning = this.autoTrack && sustainedHigh && !shrinking;
+      } else {
+        this.isSlewing = false;
+        this._wasSlewing = false;
+        this.slewWarning = false;
+        this._errHistory.length = 0;
+        this._highErrSince = null;
+      }
+
+      // Clear target once arrived (manual slew only, not auto-track)
+      if (!this.autoTrack && this.targetAz !== null && this.targetEl !== null) {
+        const errAz = azDist(pos.az, this.targetAz);
+        const errEl = Math.abs(pos.el - this.targetEl);
+        if (errAz < 0.5 && errEl < 0.5) {
+          this.targetAz = null;
+          this.targetEl = null;
         }
       }
-    }, this.updateIntervalMs);
+    } catch {
+      this._pollFailCount++;
+      if (this._pollFailCount >= 5) this.error = 'Position readback lost';
+    }
+  }
 
-    // Send tracking commands at the update interval
-    this.trackTimer = setInterval(async () => {
-      if (!this.autoTrack || !this.driver?.connected) return;
-      if (this.targetAz === null || this.targetEl === null) return;
-      try {
-        await this.driver.setPosition(this.targetAz, this.targetEl);
-        this._cmdFailCount = 0;
-        if (this.error?.startsWith('Command failed')) this.error = null;
-      } catch (e: any) {
-        this._cmdFailCount++;
-        this.error = `Command failed: ${e?.message ?? 'unknown error'}`;
-        if (this._cmdFailCount >= 3) {
-          this.autoTrack = false;
-          this.error = 'Tracking stopped: repeated command errors';
-        }
+  private async tickTrack(): Promise<void> {
+    if (!this.autoTrack || !this.driver?.connected) return;
+    if (this.targetAz === null || this.targetEl === null) return;
+
+    // Skip if target hasn't moved since last command (within 0.05°)
+    if (this._lastSentAz !== null && this._lastSentEl !== null
+      && azDist(this.targetAz, this._lastSentAz) < 0.05
+      && Math.abs(this.targetEl - this._lastSentEl) < 0.05) {
+      return;
+    }
+
+    // Tolerance: skip if rotator is already close enough to the target
+    if (this.tolerance > 0 && this.actualAz !== null && this.actualEl !== null
+      && azDist(this.actualAz, this.targetAz) < this.tolerance
+      && Math.abs(this.actualEl - this.targetEl) < this.tolerance) {
+      return;
+    }
+
+    try {
+      await this.driver.setPosition(this.targetAz, this.targetEl);
+      this._lastSentAz = this.targetAz;
+      this._lastSentEl = this.targetEl;
+      this._cmdFailCount = 0;
+      if (this.error?.startsWith('Command failed')) this.error = null;
+    } catch (e: any) {
+      this._cmdFailCount++;
+      this.error = `Command failed: ${e?.message ?? 'unknown error'}`;
+      if (this._cmdFailCount >= 3) {
+        this.autoTrack = false;
+        this.error = 'Tracking stopped: repeated command errors';
       }
-    }, this.updateIntervalMs);
+    }
   }
 
   private stopTimers(): void {
-    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
-    if (this.trackTimer) { clearInterval(this.trackTimer); this.trackTimer = null; }
+    if (this._timer !== null) { clearTimeout(this._timer); this._timer = null; }
   }
 
   // ── Persistence ──
@@ -374,6 +442,8 @@ class RotatorStore {
     if (pEl) this.parkEl = Number(pEl);
     const endAction = g('pass_end_action');
     if (endAction === 'nothing' || endAction === 'park' || endAction === 'slew-next') this.passEndAction = endAction;
+    const tol = g('tolerance');
+    if (tol) this.tolerance = Number(tol);
     // autoTrack and panelOpen are NOT restored — require explicit user action
   }
 
@@ -426,6 +496,9 @@ class RotatorStore {
     this.autoTrack = value;
     if (value) {
       this._cmdFailCount = 0;
+      this._lastSentAz = null;
+      this._lastSentEl = null;
+      this._velocityBuf.length = 0;
       if (this.error?.startsWith('Tracking stopped') || this.error?.startsWith('Command failed')) {
         this.error = null;
       }
@@ -435,6 +508,11 @@ class RotatorStore {
   setPassEndAction(action: PassEndAction): void {
     this.passEndAction = action;
     this.save('pass_end_action', action);
+  }
+
+  setTolerance(deg: number): void {
+    this.tolerance = Math.max(0, Math.min(5, deg));
+    this.save('tolerance', this.tolerance);
   }
 }
 
