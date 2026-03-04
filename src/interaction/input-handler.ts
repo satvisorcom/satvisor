@@ -343,6 +343,10 @@ export class InputHandler {
         case 'R':
           uiStore.radarOpen = !uiStore.radarOpen;
           break;
+        case 'f':
+        case 'F':
+          uiStore.feedbackWindowOpen = !uiStore.feedbackWindowOpen;
+          break;
         case 's':
         case 'S':
           this.cb.onToggleSkyView();

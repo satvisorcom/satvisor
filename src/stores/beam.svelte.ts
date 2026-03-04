@@ -2,6 +2,9 @@
  * Beam / antenna aiming store.
  * Central state for the radar reticle, 3D cone, and future tracking outputs.
  */
+import { feedbackStore } from './feedback.svelte';
+import { uiStore } from './ui.svelte';
+import { FeedbackEvent } from '../feedback/types';
 
 const DEG2RAD = Math.PI / 180;
 const PREFIX = 'satvisor_beam_';
@@ -91,6 +94,7 @@ class BeamStore {
     this.trackEl = null;
     this.trackRange = null;
     this.lockPath = [];
+    feedbackStore.fireDynamic(0);
   }
 
   updateTracking(az: number, el: number, rangeKm: number) {
@@ -98,6 +102,11 @@ class BeamStore {
     this.trackEl = el;
     this.trackRange = rangeKm;
     this.onTrackingUpdate?.(this.getTrackingSnapshot());
+
+    // Normalize intensity to 0..1 based on pass min/max elevation
+    const pass = uiStore.activePassList[uiStore.selectedPassIdx];
+    const maxEl = pass?.maxEl ?? 90;
+    feedbackStore.fireDynamic(Math.min(1, el / maxEl));
   }
 
   handleSatBelowHorizon() {
@@ -105,6 +114,8 @@ class BeamStore {
     this.trackEl = null;
     this.trackRange = null;
     this.lockPath = [];
+    feedbackStore.fireDynamic(0);
+    feedbackStore.fire(FeedbackEvent.SatBelowHorizon);
     this.onTrackingUpdate?.(this.getTrackingSnapshot());
   }
 

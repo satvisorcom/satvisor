@@ -47,6 +47,8 @@ import { moonPositionECI } from './astro/moon-observer';
 import { computePhaseAngle, observerEci, slantRange, estimateVisualMagnitude } from './astro/magnitude';
 import { loadElevation, getElevation, isElevationLoaded } from './astro/elevation';
 import { palette } from './ui/shared/theme';
+import { feedbackStore } from './stores/feedback.svelte';
+import { FeedbackEvent } from './feedback/types';
 
 export class App {
   private renderer!: THREE.WebGLRenderer;
@@ -109,6 +111,7 @@ export class App {
     this.selectedSats.add(sat);
     this.selectedSatsVersion++;
     uiStore.lastAddedSatNoradId = sat.noradId;
+    feedbackStore.fire(FeedbackEvent.SatelliteSelected);
   }
 
   /** Toggle a satellite's selection state. */
@@ -130,13 +133,16 @@ export class App {
       next.delete(sat.noradId);
       uiStore.hiddenSelectedSats = next;
     }
+    feedbackStore.fire(FeedbackEvent.SatelliteDeselected);
   }
 
   /** Clear entire selection. */
   private clearSelection() {
+    const hadSats = this.selectedSats.size > 0;
     this.selectedSats.clear();
     this.selectedSatsVersion++;
     uiStore.hiddenSelectedSats = new Set();
+    if (hadSats) feedbackStore.fire(FeedbackEvent.SatelliteDeselected);
   }
   private activeLock = TargetLock.EARTH;
   private lockedSat: Satellite | null = null;
@@ -625,6 +631,7 @@ export class App {
     } else {
       uiStore.tleLoadState = hasCelestrak ? 'cached' : 'fresh';
     }
+    if (deduped.length > 0) feedbackStore.fire(FeedbackEvent.TLELoaded);
   }
 
 
@@ -687,6 +694,7 @@ export class App {
   private toggleSkyView() {
     if (this.viewMode === ViewMode.VIEW_SKY) this.exitSkyView();
     else this.enterSkyView();
+    feedbackStore.fire(FeedbackEvent.ViewModeSwitch);
   }
 
   /** Double-click/tap in sky view — beam-lock to hovered satellite. */
@@ -694,8 +702,10 @@ export class App {
     if (this.hoveredSat) {
       if (beamStore.locked && beamStore.lockedNoradId === this.hoveredSat.noradId) {
         beamStore.unlock();
+        feedbackStore.fire(FeedbackEvent.BeamUnlock);
       } else {
         beamStore.lockToSatellite(this.hoveredSat.noradId, this.hoveredSat.name);
+        feedbackStore.fire(FeedbackEvent.BeamLock);
       }
     }
   }
@@ -721,6 +731,7 @@ export class App {
   /** Left-drag in sky view: aim beam at current pointer position. */
   private handleSkyDrag(ndcX: number, ndcY: number) {
     this.handleSkyClick(ndcX, ndcY);
+    feedbackStore.fire(FeedbackEvent.BeamAimDrag);
   }
 
   /** Project beam aim direction to screen and update reticle HUD data. */
@@ -764,6 +775,8 @@ export class App {
     settingsStore.load();
     uiStore.loadToggles();
     beamStore.load();
+    feedbackStore.load();
+    feedbackStore.installGlobalListeners();
     uiStore.loadPassFilters();
     uiStore.loadMarkerGroups(this.cfg.markerGroups);
 
@@ -816,6 +829,7 @@ export class App {
           if (this.viewMode === ViewMode.VIEW_SKY) this.skyGridRenderer.setVisible(value);
           break;
       }
+      // ToggleChanged feedback handled by global DOM listener in feedbackStore
     };
 
     // Marker group visibility
@@ -861,6 +875,7 @@ export class App {
       } else {
         this.orreryCtrl.enterOrrery();
       }
+      feedbackStore.fire(FeedbackEvent.PlanetClick);
     };
 
     // Command palette: navigate to body by id
@@ -900,6 +915,7 @@ export class App {
       if (this.orreryCtrl.isOrreryMode) return;
       this.viewMode = this.viewMode === ViewMode.VIEW_3D ? ViewMode.VIEW_2D : ViewMode.VIEW_3D;
       uiStore.viewMode = this.viewMode;
+      feedbackStore.fire(FeedbackEvent.ViewModeSwitch);
     };
 
     // Sky view toggle
@@ -967,6 +983,7 @@ export class App {
       uiStore.passesComputing = false;
       uiStore.passesProgress = 0;
       uiStore.passesComputeTime = performance.now() - this.passStartTime;
+      feedbackStore.fire(FeedbackEvent.PassPredictionDone);
     };
     this.passPredictor.onProgress = (pct) => {
       uiStore.passesProgress = pct;
@@ -983,6 +1000,7 @@ export class App {
       uiStore.nearbyPhase = 'done';
       uiStore.nearbyProgress = 0;
       uiStore.nearbyComputeTime = performance.now() - this.nearbyStartTime;
+      feedbackStore.fire(FeedbackEvent.PassPredictionDone);
     };
     this.nearbyPredictor.onProgress = (pct) => {
       uiStore.nearbyProgress = pct;
@@ -1232,6 +1250,7 @@ export class App {
     const elev = isElevationLoaded() ? getElevation(ll.lat, ll.lon) : 0;
     observerStore.setFromLatLon(ll.lat, ll.lon, elev);
     this.updateObserverMarker();
+    feedbackStore.fire(FeedbackEvent.ObserverDrag);
   }
 
   /** Transition from SAT lock (ECI frame) back to Earth co-rotation without visual jump. */
@@ -1308,6 +1327,7 @@ export class App {
     const earthRotDelta = epochDeltaDays * 360.98564736629 * DEG2RAD;
     this.camera.setAngleX(this.scrubStartCamAngleX - earthRotDelta);
     this.renderer.domElement.style.cursor = 'grabbing';
+    feedbackStore.fire(FeedbackEvent.OrbitScrub);
   }
 
   /** Handle click/tap satellite selection */
@@ -1852,6 +1872,7 @@ export class App {
       this.activeLock = TargetLock.SAT;
       this.lockedSat = this.hoveredSat;
       if (!this.selectedSats.has(this.hoveredSat)) this.toggleSat(this.hoveredSat);
+      feedbackStore.fire(FeedbackEvent.CameraLockSat);
       return;
     }
 
@@ -1870,8 +1891,8 @@ export class App {
     const earthHit = this.raycaster.ray.intersectsSphere(this.tmpSphere);
     this.tmpSphere.set(this.sunScene.disc.position, 6);
     const sunHit = this.raycaster.ray.intersectsSphere(this.tmpSphere);
-    if (sunHit && !earthHit && !moonHit) this.activeLock = TargetLock.SUN;
-    else if (moonHit && !earthHit) this.activeLock = TargetLock.MOON;
+    if (sunHit && !earthHit && !moonHit) { this.activeLock = TargetLock.SUN; feedbackStore.fire(FeedbackEvent.CameraLockSat); }
+    else if (moonHit && !earthHit) { this.activeLock = TargetLock.MOON; feedbackStore.fire(FeedbackEvent.CameraLockSat); }
     else if (earthHit) { this.activeLock = TargetLock.EARTH; this.lockedSat = null; }
     else if (this.selectedSats.size > 0) { this.clearSelection(); }
   }

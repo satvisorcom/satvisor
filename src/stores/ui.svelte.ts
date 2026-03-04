@@ -185,6 +185,9 @@ class UIStore {
   // Theme editor
   themeEditorOpen = $state(false);
 
+  // Feedback window
+  feedbackWindowOpen = $state(false);
+
   // SatNOGS database window
   satDatabaseOpen = $state(false);
   satDatabaseNoradId = $state<number | null>(null);

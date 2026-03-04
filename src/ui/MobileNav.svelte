@@ -3,7 +3,7 @@
   import MobileSheet from './shared/MobileSheet.svelte';
   import {
     ICON_DATA_SOURCES, ICON_SELECTION, ICON_PASSES, ICON_TIME, ICON_MORE,
-    ICON_OBSERVER, ICON_VIEW, ICON_SETTINGS, ICON_DATABASE, ICON_HELP, ICON_RADAR, ICON_SKY,
+    ICON_OBSERVER, ICON_VIEW, ICON_SETTINGS, ICON_DATABASE, ICON_HELP, ICON_RADAR, ICON_SKY, ICON_FEEDBACK,
   } from './shared/icons';
   import { observerStore } from '../stores/observer.svelte';
 
@@ -20,6 +20,7 @@
     { id: 'radar', label: 'Radar', icon: ICON_RADAR },
     { id: 'observer', label: 'Observer', icon: ICON_OBSERVER },
     { id: 'view', label: 'View', icon: ICON_VIEW },
+    { id: 'feedback', label: 'Feedback', icon: ICON_FEEDBACK },
   ];
 
   // Map sub-sheets to their parent tab so the tab stays highlighted

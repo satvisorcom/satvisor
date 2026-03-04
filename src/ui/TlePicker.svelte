@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { sourcesStore } from '../stores/sources.svelte';
-  import { ICON_SEARCH, ICON_COMMAND, ICON_SELECTION, ICON_VIEW, ICON_TIME, ICON_SETTINGS, ICON_OBSERVER, ICON_HELP, ICON_2D, ICON_3D, ICON_SKY, ICON_PASSES, ICON_DATA_SOURCES, ICON_DATABASE, ICON_RADAR } from './shared/icons';
+  import { ICON_SEARCH, ICON_COMMAND, ICON_SELECTION, ICON_VIEW, ICON_TIME, ICON_SETTINGS, ICON_OBSERVER, ICON_HELP, ICON_2D, ICON_3D, ICON_SKY, ICON_PASSES, ICON_DATA_SOURCES, ICON_DATABASE, ICON_RADAR, ICON_FEEDBACK } from './shared/icons';
   import { observerStore } from '../stores/observer.svelte';
   import { ViewMode } from '../types';
 
@@ -80,6 +80,9 @@
       </button>
       <button class="icon-btn" class:active={uiStore.observerWindowOpen} title="Observer (O)" onclick={() => uiStore.observerWindowOpen = !uiStore.observerWindowOpen}>
         {@html ICON_OBSERVER}
+      </button>
+      <button class="icon-btn" class:active={uiStore.feedbackWindowOpen} title="Feedback (F)" onclick={() => uiStore.feedbackWindowOpen = !uiStore.feedbackWindowOpen}>
+        {@html ICON_FEEDBACK}
       </button>
       <button class="icon-btn" class:active={uiStore.settingsOpen} title="Settings" onclick={() => uiStore.settingsOpen = !uiStore.settingsOpen}>
         {@html ICON_SETTINGS}

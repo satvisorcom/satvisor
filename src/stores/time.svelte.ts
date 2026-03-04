@@ -1,4 +1,6 @@
 import { getCurrentRealTimeEpoch, epochToDatetimeStr, epochToUnix, unixToEpoch } from '../astro/epoch';
+import { feedbackStore } from './feedback.svelte';
+import { FeedbackEvent } from '../feedback/types';
 
 /**
  * Step through time multiplier values.
@@ -144,6 +146,7 @@ class TimeStore {
       this.warping = false;
       this.displayDatetime = epochToDatetimeStr(this.epoch);
       this.displaySpeed = formatSpeed(this.multiplier);
+      feedbackStore.fire(FeedbackEvent.TimeWarpComplete);
     }
   }
 
@@ -215,11 +218,13 @@ class TimeStore {
   /** Mouse scrub: called by TimeWindow on pointermove with computed offset. */
   updateMouseScrub(offset: number) {
     this._applyScrubOffset(offset);
+    feedbackStore.fireDynamic(Math.abs(offset));
   }
 
   /** Mouse scrub: called by TimeWindow on pointerup. */
   stopMouseScrub() {
     this._endScrub();
+    feedbackStore.fireDynamic(0);
   }
 
   togglePause() {

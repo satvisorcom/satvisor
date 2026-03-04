@@ -10,6 +10,8 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@satvisorcom/buttplug": "^4.1.1",
+    "@satvisorcom/buttplug-wasm": "^4.1.1",
     "satellite.js": "^6.0.2",
     "svelte": "^5.53.2",
     "three": "^0.170.0"

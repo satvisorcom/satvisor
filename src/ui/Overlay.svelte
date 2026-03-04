@@ -23,6 +23,7 @@
   import ThemeEditorWindow from './ThemeEditorWindow.svelte';
   import SatDatabaseWindow from './SatDatabaseWindow.svelte';
   import RadarWindow from './RadarWindow.svelte';
+  import FeedbackWindow from './FeedbackWindow.svelte';
   import SkyReticle from './SkyReticle.svelte';
 
   onMount(() => {
@@ -61,6 +62,7 @@
   <ThemeEditorWindow />
   <SatDatabaseWindow />
   <RadarWindow />
+  <FeedbackWindow />
   <SkyReticle />
 </div>
 

@@ -13,11 +13,31 @@ function git(cmd: string): string {
 const commitHash = git('rev-parse --short HEAD');
 const commitDate = git('log -1 --format=%ci');
 
+function buttplugWasmPlugin() {
+  const VIRTUAL_ENV = '\0wasm-env';
+  const VIRTUAL_WS = '\0stub-ws';
+  return {
+    name: 'buttplug-wasm-stubs',
+    resolveId(id: string) {
+      if (id === 'env') return VIRTUAL_ENV;
+      if (id === 'ws') return VIRTUAL_WS;
+    },
+    load(id: string) {
+      if (id === VIRTUAL_ENV) return 'export function now() { return performance.now(); }';
+      if (id === VIRTUAL_WS) return 'export const WebSocket = globalThis.WebSocket;';
+    },
+  };
+}
+
 export default defineConfig({
   clearScreen: false,
   define: {
     __COMMIT_HASH__: JSON.stringify(commitHash),
     __COMMIT_DATE__: JSON.stringify(commitDate),
+  },
+  optimizeDeps: {
+    exclude: ['@satvisorcom/buttplug-wasm'],
+    include: ['eventemitter3'],
   },
   server: {
     port: 1420,
@@ -26,6 +46,7 @@ export default defineConfig({
     watch: { ignored: ['**/src-tauri/**'] },
   },
   plugins: [
+    buttplugWasmPlugin(),
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -46,7 +67,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,png,jpg,ttf,json}'],
-        globIgnores: ['**/textures/icons/**'],
+        globIgnores: ['**/textures/icons/**', '**/buttplug_wasm*'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // Don't auto-create a NavigationRoute that serves precached index.html
         // — we add our own NetworkFirst navigation rule below

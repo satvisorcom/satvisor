@@ -151,6 +151,7 @@
     actions.push({ id: 'win-polar', category: 'Window', label: 'Toggle Polar Plot', keywords: 'azimuth elevation tracking', execute: () => { uiStore.polarPlotOpen = !uiStore.polarPlotOpen; close(); } });
     actions.push({ id: 'win-radar', category: 'Window', label: 'Toggle Radar', shortcut: 'R', keywords: 'radar scope antenna dish sky overhead', execute: () => { uiStore.radarOpen = !uiStore.radarOpen; close(); } });
     actions.push({ id: 'win-theme', category: 'Window', label: 'Toggle Theme Editor', keywords: 'color appearance dark light', execute: () => { uiStore.themeEditorOpen = !uiStore.themeEditorOpen; close(); } });
+    actions.push({ id: 'win-feedback', category: 'Window', label: 'Toggle Feedback', shortcut: 'F', keywords: 'haptic audio vibration sound buttplug', execute: () => { uiStore.feedbackWindowOpen = !uiStore.feedbackWindowOpen; close(); } });
     actions.push({ id: 'win-help', category: 'Window', label: 'Show Help', keywords: 'info controls keyboard', execute: () => { uiStore.infoModalOpen = true; close(); } });
     actions.push({ id: 'win-reset-layout', category: 'Window', label: 'Reset Window Positions', keywords: 'layout default reset restore', execute: () => { close(); resetWindowLayout(); } });
 
