@@ -168,8 +168,9 @@ export class CameraController {
   /** Apply orbit delta with velocity tracking (for touch inertia). */
   orbitWithVelocity(dx: number, dy: number): void {
     this.orbit(dx, dy);
-    this._orbitVelX = dx;
-    this._orbitVelY = dy;
+    // Exponential moving average so fast swipes build momentum
+    this._orbitVelX = this._orbitVelX * 0.3 + dx * 0.7;
+    this._orbitVelY = this._orbitVelY * 0.3 + dy * 0.7;
   }
 
   /** Apply 3D pan (shift+drag or two-finger) to targetTarget3d. */
@@ -185,8 +186,8 @@ export class CameraController {
   /** Apply 3D pan with velocity tracking (for touch inertia). */
   pan3dWithVelocity(dx: number, dy: number): void {
     this.pan3d(dx, dy);
-    this._panVelX = dx;
-    this._panVelY = dy;
+    this._panVelX = this._panVelX * 0.3 + dx * 0.7;
+    this._panVelY = this._panVelY * 0.3 + dy * 0.7;
   }
 
   /** Apply 2D pan to targetCam2dTarget. */
@@ -199,8 +200,8 @@ export class CameraController {
   /** Apply 2D pan with velocity tracking (for touch inertia). */
   pan2dWithVelocity(dx: number, dy: number): void {
     this.pan2d(dx, dy);
-    this._pan2dVelX = dx;
-    this._pan2dVelY = dy;
+    this._pan2dVelX = this._pan2dVelX * 0.3 + dx * 0.7;
+    this._pan2dVelY = this._pan2dVelY * 0.3 + dy * 0.7;
   }
 
   /** Apply 3D scroll zoom to targetCamDistance with min-zoom clamping. */
@@ -349,12 +350,13 @@ export class CameraController {
     this._target3d.lerp(this._targetTarget3d, smooth);
 
     // Inertia: apply velocity and decay (frame-rate independent)
-    const friction = Math.pow(0.92, dt * 60);  // normalize to 60fps reference
+    const friction = Math.pow(0.94, dt * 60);  // normalize to 60fps reference
     const velThreshold = 0.01;
+    const dtNorm = dt * 60;  // normalize displacement to 60fps reference
 
     if (Math.abs(this._orbitVelX) > velThreshold || Math.abs(this._orbitVelY) > velThreshold) {
-      this._targetCamAngleX += (this._skyView ? this._orbitVelX : -this._orbitVelX) * 0.005;
-      this._targetCamAngleY += (this._skyView ? -this._orbitVelY : this._orbitVelY) * 0.005;
+      this._targetCamAngleX += (this._skyView ? this._orbitVelX : -this._orbitVelX) * 0.008 * dtNorm;
+      this._targetCamAngleY += (this._skyView ? -this._orbitVelY : this._orbitVelY) * 0.008 * dtNorm;
       if (this._skyView) {
         this._targetCamAngleY = Math.max(-0.05, Math.min(Math.PI / 2, this._targetCamAngleY));
       } else {
@@ -368,7 +370,7 @@ export class CameraController {
     }
 
     if (Math.abs(this._panVelX) > velThreshold || Math.abs(this._panVelY) > velThreshold) {
-      this.pan3d(this._panVelX, this._panVelY);
+      this.pan3d(this._panVelX * dtNorm, this._panVelY * dtNorm);
       this._panVelX *= friction;
       this._panVelY *= friction;
     } else {
@@ -377,7 +379,7 @@ export class CameraController {
     }
 
     if (Math.abs(this._pan2dVelX) > velThreshold || Math.abs(this._pan2dVelY) > velThreshold) {
-      this.pan2d(this._pan2dVelX, this._pan2dVelY);
+      this.pan2d(this._pan2dVelX * dtNorm, this._pan2dVelY * dtNorm);
       this._pan2dVelX *= friction;
       this._pan2dVelY *= friction;
     } else {
