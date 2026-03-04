@@ -15,7 +15,7 @@
     return PARK_PRESETS[rotatorStore.parkPreset];
   });
   import { ICON_RADAR } from './shared/icons';
-  import { palette } from './shared/theme';
+  import { palette, parseRgba } from './shared/theme';
   import { initHiDPICanvas } from './shared/canvas';
 
   let tab = $state<'radar' | 'setup'>('radar');
@@ -53,8 +53,57 @@
   let panX = $state(0);
   let panY = $state(0);
 
-  // VFX: sweep line + phosphor afterglow (persisted via uiStore)
+  // VFX: CRT radar simulation (persisted via uiStore)
   let vfx = $derived(uiStore.radarVfx);
+
+  // CRT phosphor buffer — persistent offscreen canvas that slowly fades
+  let phosphorCanvas: HTMLCanvasElement | null = null;
+  let phosphorCtx: CanvasRenderingContext2D | null = null;
+  let scanlineCanvas: HTMLCanvasElement | null = null;
+  let vignetteCanvas: HTMLCanvasElement | null = null;
+  let prevSweepAngle = 0;
+
+  function buildPhosphor() {
+    const c = document.createElement('canvas');
+    c.width = SIZE; c.height = SIZE;
+    const pc = c.getContext('2d')!;
+    // Start with dark background
+    pc.fillStyle = palette.radarBg;
+    pc.fillRect(0, 0, SIZE, SIZE);
+    phosphorCanvas = c;
+    phosphorCtx = pc;
+  }
+
+  function buildScanlines() {
+    const c = document.createElement('canvas');
+    c.width = SIZE; c.height = SIZE;
+    const sc = c.getContext('2d')!;
+    sc.strokeStyle = 'rgba(0,0,0,0.05)';
+    sc.lineWidth = 1;
+    for (let y = 0; y < SIZE; y += 2) {
+      sc.beginPath();
+      sc.moveTo(0, y + 0.5);
+      sc.lineTo(SIZE, y + 0.5);
+      sc.stroke();
+    }
+    scanlineCanvas = c;
+  }
+
+  function buildVignette() {
+    const c = document.createElement('canvas');
+    c.width = SIZE; c.height = SIZE;
+    const vc = c.getContext('2d')!;
+    const grad = vc.createRadialGradient(CX, CY, 0, CX, CY, R_MAX);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.55, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.85, 'rgba(0,0,0,0.3)');
+    grad.addColorStop(1.0, 'rgba(0,0,0,0.7)');
+    vc.fillStyle = grad;
+    vc.beginPath();
+    vc.arc(CX, CY, R_MAX, 0, 2 * Math.PI);
+    vc.fill();
+    vignetteCanvas = c;
+  }
 
   // Inputs: track store live, but don't override while user is typing
   let inputAz = $state(beamStore.aimAz.toFixed(2));
@@ -219,93 +268,185 @@
     ctx.arc(CX, CY, R_MAX + 1, 0, 2 * Math.PI);
     ctx.clip();
 
-    // ── Sweep line (VFX only) ──
     const zCX = CX + panX, zCY = CY + panY;
     const sweepLen = R_MAX * zoom + 1;
-    if (vfx) {
-      sweepAngle += 0.02;
-      if (sweepAngle > 2 * Math.PI) sweepAngle -= 2 * Math.PI;
-      for (let i = 0; i < 30; i++) {
-        const a = sweepAngle - i * 0.02;
-        const alpha = (1 - i / 30) * 0.12;
-        ctx.strokeStyle = `rgba(68, 255, 68, ${alpha})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(zCX, zCY);
-        ctx.lineTo(zCX + sweepLen * Math.sin(a), zCY - sweepLen * Math.cos(a));
-        ctx.stroke();
-      }
-    }
-
-    // ── Grid rings (adaptive to zoom, centered on zenith) ──
-    ctx.strokeStyle = palette.radarGrid;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([]);
+    const TWO_PI = 2 * Math.PI;
     const visRange = 90 / zoom;
     const ringStep = visRange > 60 ? 30 : visRange > 25 ? 10 : visRange > 10 ? 5 : visRange > 4 ? 2 : 1;
     const panDist = Math.sqrt(panX * panX + panY * panY);
-    for (let elDeg = 0; elDeg < 90; elDeg += ringStep) {
-      const r = R_MAX * zoom * (90 - elDeg) / 90;
-      if (r - panDist > R_MAX + 5) continue;
-      ctx.beginPath();
-      ctx.arc(zCX, zCY, r, 0, 2 * Math.PI);
-      ctx.stroke();
-    }
-
-    // ── Crosshairs (through zenith) ──
-    ctx.beginPath();
-    ctx.moveTo(zCX - sweepLen, zCY); ctx.lineTo(zCX + sweepLen, zCY);
-    ctx.moveTo(zCX, zCY - sweepLen); ctx.lineTo(zCX, zCY + sweepLen);
-    ctx.stroke();
-
-    // ── Satellite blips ──
     const blips = uiStore.radarBlips;
     const count = uiStore.radarBlipCount;
     const bAz = beamStore.aimAz, bEl = beamStore.aimEl, bW = beamStore.beamWidth;
 
-    for (let i = 0; i < count; i++) {
-      const off = i * 4;
-      const az = blips[off];
-      const el = blips[off + 1];
-      const flags = blips[off + 3];
-      const isSelected = (flags & 1) !== 0;
-      const isHover = i === hoverIdx;
-      const inBeam = isInsideBeam(az, el, bAz, bEl, bW);
-      const { x, y } = azElToXY(az, el);
+    // ═══ VFX: phosphor buffer approach ═══
+    if (vfx && phosphorCtx && phosphorCanvas) {
+      const pc = phosphorCtx;
 
-      // Sweep afterglow: blips flash when swept, then decay (VFX only)
-      const fade = vfx ? Math.pow(1 - (((sweepAngle - az * Math.PI / 180) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI), 2) : 1;
+      // Advance sweep
+      sweepAngle += 0.014;
+      if (sweepAngle > TWO_PI) sweepAngle -= TWO_PI;
 
-      if (isSelected) {
-        if (vfx) ctx.globalAlpha = 0.7 + fade * 0.3;
+      // Fade the phosphor buffer — this creates the persistence decay
+      pc.fillStyle = 'rgba(5, 10, 5, 0.028)';
+      pc.fillRect(0, 0, SIZE, SIZE);
+
+      // Draw bright sweep line onto phosphor
+      const edgeA = sweepAngle - Math.PI / 2;
+      const sx = CX + sweepLen * Math.cos(edgeA);
+      const sy = CY + sweepLen * Math.sin(edgeA);
+      pc.strokeStyle = 'rgba(60, 200, 60, 0.15)';
+      pc.lineWidth = 1.5;
+      pc.beginPath();
+      pc.moveTo(CX, CY);
+      pc.lineTo(sx, sy);
+      pc.stroke();
+      // Dimmer trailing line
+      const trailA = sweepAngle - 0.04 - Math.PI / 2;
+      pc.strokeStyle = 'rgba(50, 180, 50, 0.05)';
+      pc.lineWidth = 1;
+      pc.beginPath();
+      pc.moveTo(CX, CY);
+      pc.lineTo(CX + sweepLen * Math.cos(trailA), CY + sweepLen * Math.sin(trailA));
+      pc.stroke();
+
+      // Draw blips onto phosphor ONLY when sweep passes them
+      for (let i = 0; i < count; i++) {
+        const off = i * 4;
+        const az = blips[off];
+        const el = blips[off + 1];
+        const flags = blips[off + 3];
+        const isSelected = (flags & 1) !== 0;
+        const inBeam = isInsideBeam(az, el, bAz, bEl, bW);
+
+        // How far behind the sweep is this blip?
+        const angDist = ((sweepAngle - az * Math.PI / 180) % TWO_PI + TWO_PI) % TWO_PI;
+        // Only paint when sweep is within ~3° of the blip
+        if (angDist < 0.06 || angDist > TWO_PI - 0.02) {
+          const r = R_MAX * (90 - Math.max(0, el)) / 90;
+          const azRad = az * Math.PI / 180;
+          const bx = r * Math.sin(azRad) + CX;
+          const by = -r * Math.cos(azRad) + CY;
+          const radius = isSelected ? 4 : inBeam ? 3 : 2.5;
+
+          // Bright white-green flash
+          pc.fillStyle = isSelected ? 'rgba(200, 255, 200, 0.95)'
+                       : inBeam    ? 'rgba(180, 255, 130, 0.9)'
+                       :             'rgba(100, 255, 100, 0.85)';
+          pc.beginPath();
+          pc.arc(bx, by, radius, 0, TWO_PI);
+          pc.fill();
+
+          // Bloom glow
+          if (isSelected || inBeam) {
+            pc.fillStyle = isSelected ? 'rgba(68, 255, 68, 0.25)' : 'rgba(68, 255, 68, 0.15)';
+            pc.beginPath();
+            pc.arc(bx, by, radius + 4, 0, TWO_PI);
+            pc.fill();
+          }
+        }
+      }
+
+      // Composite phosphor buffer onto main canvas
+      ctx.drawImage(phosphorCanvas, 0, 0);
+
+      // Dim static blips so satellites are always faintly visible
+      for (let i = 0; i < count; i++) {
+        const off = i * 4;
+        const { x, y } = azElToXY(blips[off], blips[off + 1]);
+        const flags = blips[off + 3];
+        const isSelected = (flags & 1) !== 0;
+        const inBeam = isInsideBeam(blips[off], blips[off + 1], bAz, bEl, bW);
+        ctx.fillStyle = inBeam ? palette.beamHighlight : palette.radarBlipDim;
+        ctx.globalAlpha = isSelected ? 0.6 : 0.4;
         ctx.beginPath();
-        ctx.arc(x, y, 7, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(68, 255, 68, 0.15)';
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, y, 3.5, 0, 2 * Math.PI);
-        ctx.fillStyle = palette.radarBlip;
-        ctx.fill();
-      } else if (isHover) {
-        if (vfx) ctx.globalAlpha = 0.7 + fade * 0.3;
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, 2 * Math.PI);
-        ctx.fillStyle = palette.radarBlip;
-        ctx.fill();
-      } else if (inBeam) {
-        if (vfx) ctx.globalAlpha = 0.25 + fade * 0.75;
-        ctx.beginPath();
-        ctx.arc(x, y, vfx ? 2 + fade : 2.5, 0, 2 * Math.PI);
-        ctx.fillStyle = palette.beamHighlight;
-        ctx.fill();
-      } else {
-        if (vfx) ctx.globalAlpha = 0.06 + fade * 0.94;
-        ctx.beginPath();
-        ctx.arc(x, y, vfx ? 1.2 + fade * 1.5 : 1.5, 0, 2 * Math.PI);
-        ctx.fillStyle = vfx ? palette.radarBlip : palette.radarBlipDim;
+        ctx.arc(x, y, isSelected ? 2.5 : 1.5, 0, TWO_PI);
         ctx.fill();
       }
-      if (vfx) ctx.globalAlpha = 1;
+      ctx.globalAlpha = 1;
+
+      // Draw grid ON TOP of phosphor (so it's always crisp, not decaying)
+      ctx.strokeStyle = palette.radarGrid;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      for (let elDeg = 0; elDeg < 90; elDeg += ringStep) {
+        const r = R_MAX * zoom * (90 - elDeg) / 90;
+        if (r - panDist > R_MAX + 5) continue;
+        ctx.beginPath();
+        ctx.arc(zCX, zCY, r, 0, TWO_PI);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(zCX - sweepLen, zCY); ctx.lineTo(zCX + sweepLen, zCY);
+      ctx.moveTo(zCX, zCY - sweepLen); ctx.lineTo(zCX, zCY + sweepLen);
+      ctx.stroke();
+
+      // Draw hover ring on main canvas (interactive, not on phosphor)
+      if (hoverIdx >= 0) {
+        const hOff = hoverIdx * 4;
+        const { x: hx, y: hy } = azElToXY(blips[hOff], blips[hOff + 1]);
+        ctx.strokeStyle = palette.radarBlip;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 5, 0, TWO_PI);
+        ctx.stroke();
+      }
+
+    } else {
+      // ═══ Non-VFX: standard clear-and-redraw ═══
+
+      // Grid rings
+      ctx.strokeStyle = palette.radarGrid;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      for (let elDeg = 0; elDeg < 90; elDeg += ringStep) {
+        const r = R_MAX * zoom * (90 - elDeg) / 90;
+        if (r - panDist > R_MAX + 5) continue;
+        ctx.beginPath();
+        ctx.arc(zCX, zCY, r, 0, TWO_PI);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(zCX - sweepLen, zCY); ctx.lineTo(zCX + sweepLen, zCY);
+      ctx.moveTo(zCX, zCY - sweepLen); ctx.lineTo(zCX, zCY + sweepLen);
+      ctx.stroke();
+
+      // Blips
+      for (let i = 0; i < count; i++) {
+        const off = i * 4;
+        const az = blips[off];
+        const el = blips[off + 1];
+        const flags = blips[off + 3];
+        const isSelected = (flags & 1) !== 0;
+        const isHover = i === hoverIdx;
+        const inBeam = isInsideBeam(az, el, bAz, bEl, bW);
+        const { x, y } = azElToXY(az, el);
+
+        if (isSelected) {
+          ctx.beginPath();
+          ctx.arc(x, y, 7, 0, TWO_PI);
+          ctx.fillStyle = 'rgba(68, 255, 68, 0.15)';
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, 3.5, 0, TWO_PI);
+          ctx.fillStyle = palette.radarBlip;
+          ctx.fill();
+        } else if (isHover) {
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, TWO_PI);
+          ctx.fillStyle = palette.radarBlip;
+          ctx.fill();
+        } else if (inBeam) {
+          ctx.beginPath();
+          ctx.arc(x, y, 2.5, 0, TWO_PI);
+          ctx.fillStyle = palette.beamHighlight;
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y, 1.5, 0, TWO_PI);
+          ctx.fillStyle = palette.radarBlipDim;
+          ctx.fill();
+        }
+      }
     }
 
     // ── Locked satellite orbit arc ──
@@ -373,6 +514,12 @@
         ctx.stroke();
         ctx.setLineDash([]);
       }
+    }
+
+    // ── CRT overlays (inside clip) ──
+    if (vfx) {
+      if (scanlineCanvas) ctx.drawImage(scanlineCanvas, 0, 0);
+      if (vignetteCanvas) ctx.drawImage(vignetteCanvas, 0, 0);
     }
 
     ctx.restore();  // unclip
@@ -469,6 +616,24 @@
     if (!canvasEl) return;
     ctx = initHiDPICanvas(canvasEl, SIZE, SIZE + INFO_H);
   }
+
+  function initCrtCanvases() {
+    buildPhosphor();
+    buildScanlines();
+    buildVignette();
+  }
+
+  function destroyCrtCanvases() {
+    phosphorCanvas = phosphorCtx = scanlineCanvas = vignetteCanvas = null;
+  }
+
+  $effect(() => {
+    if (vfx && canvasEl) {
+      initCrtCanvases();
+    } else {
+      destroyCrtCanvases();
+    }
+  });
 
   $effect(() => {
     if (canvasEl) {
