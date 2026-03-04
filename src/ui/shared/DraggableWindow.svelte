@@ -98,6 +98,8 @@
   let dragOffY = 0;
   let windowEl: HTMLDivElement | undefined = $state();
   let initialized = false;
+  let rightAnchored = $state(false); // true when window is snapped/positioned at right edge
+  let rightOffset = 0; // distance from right viewport edge to window's right edge
 
   // Restore open/closed state from localStorage (skip for modals — they're controlled externally)
   if (!modal) {
@@ -124,6 +126,7 @@
     if (!winKey) return;
     localStorage.setItem(sKey('x'), String(Math.round(x)));
     localStorage.setItem(sKey('y'), String(Math.round(y)));
+    localStorage.setItem(sKey('rAnchor'), rightAnchored ? String(Math.round(rightOffset)) : '');
   }
 
   function loadPosition(): { x: number; y: number } | null {
@@ -131,6 +134,12 @@
     const sx = localStorage.getItem(sKey('x'));
     const sy = localStorage.getItem(sKey('y'));
     if (sx === null || sy === null) return null;
+    // Restore right-anchor state
+    const ra = localStorage.getItem(sKey('rAnchor'));
+    if (ra !== null && ra !== '') {
+      rightAnchored = true;
+      rightOffset = Number(ra);
+    }
     return { x: Number(sx), y: Number(sy) };
   }
 
@@ -194,6 +203,15 @@
     if (!dragging) return;
     dragging = false;
     snapV = null; snapH = null;
+    // Detect right-edge anchoring: window's right edge near viewport right - 10
+    const w = windowEl?.offsetWidth ?? 200;
+    const distFromRight = window.innerWidth - (x + w);
+    if (distFromRight <= SNAP_THRESHOLD) {
+      rightAnchored = true;
+      rightOffset = distFromRight;
+    } else {
+      rightAnchored = false;
+    }
     savePosition();
     updateRegistry();
   }
@@ -204,8 +222,14 @@
     const h = windowEl.offsetHeight;
     const maxX = window.innerWidth - w - 10;
     const maxY = window.innerHeight - h - 10;
-    if (x > maxX) x = Math.max(10, maxX);
+    if (rightAnchored) {
+      // Keep window pinned to the right edge
+      x = Math.max(10, window.innerWidth - w - rightOffset);
+    } else if (x > maxX) {
+      x = Math.max(10, maxX);
+    }
     if (y > maxY) y = Math.max(10, maxY);
+    savePosition();
   }
 
   function updateRegistry() {
@@ -265,9 +289,14 @@
         y = saved.y;
       } else {
         // Resolve right-aligned windows (initialX >= 9000) and find free spot
-        const resolvedX = initialX >= 9000
+        const isRightAligned = initialX >= 9000;
+        const resolvedX = isRightAligned
           ? Math.max(10, window.innerWidth - (el.offsetWidth || 250) - 10)
           : initialX;
+        if (isRightAligned) {
+          rightAnchored = true;
+          rightOffset = 10;
+        }
         const resolvedY = Math.max(10, Math.min(window.innerHeight - 30, initialY));
         const estW = el.offsetWidth || 250;
         const estH = el.offsetHeight || 200;
