@@ -110,7 +110,7 @@
         if (conn && typeof conn.downlink === 'number' && conn.downlink < 2) slow = true;
 
         var showHint = function(prefix, suffix) {
-          hint.innerHTML = prefix + '<span class="hint-link">lite version</span>' + suffix;
+          hint.innerHTML = prefix + '<span class="hint-link">lite mode</span>' + suffix;
           hint.classList.add('visible');
           hint.onclick = switchToLite;
         };
