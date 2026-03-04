@@ -126,6 +126,9 @@ class UIStore {
   selectedPassIdx = $state(-1);
   livePassAzEl = $state<{ az: number; el: number } | null>(null);
 
+  // Time window tab
+  timeTab = $state<'datetime' | 'epoch'>('datetime');
+
   // Nearby passes tab
   passesTab = $state<'selected' | 'nearby'>('selected');
   nearbyPasses = $state<SatellitePass[]>([]);
@@ -286,11 +289,18 @@ class UIStore {
     this.singleSelectMode = load('satvisor_single_select', this.isMobile);
     const savedTab = localStorage.getItem('satvisor_passes_tab');
     if (savedTab === 'selected' || savedTab === 'nearby') this.passesTab = savedTab;
+    const savedTimeTab = localStorage.getItem('satvisor_time_tab');
+    if (savedTimeTab === 'datetime' || savedTimeTab === 'epoch') this.timeTab = savedTimeTab;
   }
 
   setSingleSelectMode(value: boolean) {
     this.singleSelectMode = value;
     localStorage.setItem('satvisor_single_select', String(value));
+  }
+
+  setTimeTab(tab: 'datetime' | 'epoch') {
+    this.timeTab = tab;
+    localStorage.setItem('satvisor_time_tab', tab);
   }
 
   setPassesTab(tab: 'selected' | 'nearby') {

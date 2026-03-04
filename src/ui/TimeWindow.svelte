@@ -1,6 +1,7 @@
 <script lang="ts">
   import DraggableWindow from './shared/DraggableWindow.svelte';
   import MobileSheet from './shared/MobileSheet.svelte';
+  import Button from './shared/Button.svelte';
   import { timeStore, scrubMultiplierFromOffset } from '../stores/time.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { epochToUnix, unixToEpoch } from '../astro/epoch';
@@ -18,8 +19,7 @@
   let editField = $state<string | null>(null);
   let editValue = $state('');
 
-  // Epoch input row
-  let epochExpanded = $state(false);
+  // Epoch input
   let epochEditing = $state(false);
   let epochInputValue = $state('');
   let epochInputEl: HTMLInputElement | undefined = $state();
@@ -255,63 +255,23 @@
   <div class="tc tc-mobile">
     {@render transportRow()}
 
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="mobile-datetime" onclick={openDatePicker}>
-      <span class="mobile-date">{year}-{pad(month)}-{pad(day)}</span>
-      <span class="mobile-time">{pad(hour)}:{pad(min)}:{pad(sec)}</span>
-      <span class="mobile-utc">UTC</span>
-    </div>
-    <input
-      bind:this={datePickerEl}
-      type="datetime-local"
-      step="1"
-      class="date-picker-hidden"
-      onchange={onDatePickerChange}
-    >
-
-    {@render scrubStrip()}
-
-    {#if timeStore.tleWarning}
-      <div class="warning">{timeStore.tleWarning}</div>
-    {/if}
-  </div>
-{/snippet}
-
-{#snippet desktopContent()}
-  <div class="tc">
-    {@render transportRow()}
-
-    <div class="nudge-row">
-      {@render nudgeGroup('year', year, 'yr', true)}
-      {@render nudgeGroup('month', month, 'mo')}
-      {@render nudgeGroup('day', day, 'dy')}
-      <span class="sep"></span>
-      {@render nudgeGroup('hour', hour, 'hr')}
-      {@render nudgeGroup('min', min, 'mn')}
-      {@render nudgeGroup('sec', sec, 'sc')}
-      <span class="utc-label">UTC</span>
-    </div>
-
-    {@render scrubStrip()}
-
-    {#if timeStore.tleWarning}
-      <div class="warning">{timeStore.tleWarning}</div>
-    {/if}
-  </div>
-
-  <div class="epoch-footer">
-    <button class="expand-chevron" onclick={() => epochExpanded = !epochExpanded} title="Unix epoch">
-      <svg viewBox="0 0 10 6" width="10" height="6" fill="currentColor">
-        {#if epochExpanded}
-          <polygon points="5,0 10,6 0,6"/>
-        {:else}
-          <polygon points="0,0 10,0 5,6"/>
-        {/if}
-      </svg>
-    </button>
-    {#if epochExpanded}
-      <div class="epoch-row">
-        <span class="epoch-label">epoch</span>
+    {#if uiStore.timeTab === 'datetime'}
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div class="mobile-datetime" onclick={openDatePicker}>
+        <span class="mobile-date">{year}-{pad(month)}-{pad(day)}</span>
+        <span class="mobile-time">{pad(hour)}:{pad(min)}:{pad(sec)}</span>
+        <span class="mobile-utc">UTC</span>
+      </div>
+      <input
+        bind:this={datePickerEl}
+        type="datetime-local"
+        step="1"
+        class="date-picker-hidden"
+        onchange={onDatePickerChange}
+      >
+    {:else}
+      <div class="epoch-panel">
+        <span class="epoch-label">Unix Timestamp</span>
         {#if epochEditing}
           <input
             class="epoch-input"
@@ -325,17 +285,74 @@
           <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
           <span class="epoch-value" onclick={startEpochEdit}>{displayUnix}</span>
         {/if}
+        <span class="epoch-hint">Tap to edit</span>
       </div>
+    {/if}
+
+    {@render scrubStrip()}
+
+    {#if timeStore.tleWarning}
+      <div class="warning">{timeStore.tleWarning}</div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet headerTabs()}
+  <div class="tab-bar">
+    <Button size="xs" variant="ghost" active={uiStore.timeTab === 'datetime'} onclick={() => uiStore.setTimeTab('datetime')}>Date</Button>
+    <Button size="xs" variant="ghost" active={uiStore.timeTab === 'epoch'} onclick={() => uiStore.setTimeTab('epoch')}>Epoch</Button>
+  </div>
+{/snippet}
+
+{#snippet desktopContent()}
+  <div class="tc">
+    {@render transportRow()}
+
+    {#if uiStore.timeTab === 'datetime'}
+      <div class="nudge-row">
+        {@render nudgeGroup('year', year, 'yr', true)}
+        {@render nudgeGroup('month', month, 'mo')}
+        {@render nudgeGroup('day', day, 'dy')}
+        <span class="sep"></span>
+        {@render nudgeGroup('hour', hour, 'hr')}
+        {@render nudgeGroup('min', min, 'mn')}
+        {@render nudgeGroup('sec', sec, 'sc')}
+        <span class="utc-label">UTC</span>
+      </div>
+    {:else}
+      <div class="epoch-panel">
+        <span class="epoch-label">Unix Timestamp</span>
+        {#if epochEditing}
+          <input
+            class="epoch-input"
+            type="text"
+            bind:this={epochInputEl}
+            bind:value={epochInputValue}
+            onblur={commitEpochEdit}
+            onkeydown={onEpochKeydown}
+          >
+        {:else}
+          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+          <span class="epoch-value" onclick={startEpochEdit}>{displayUnix}</span>
+        {/if}
+        <span class="epoch-hint">Click to edit</span>
+      </div>
+    {/if}
+
+    {@render scrubStrip()}
+
+    {#if timeStore.tleWarning}
+      <div class="warning">{timeStore.tleWarning}</div>
     {/if}
   </div>
 {/snippet}
 
 {#if uiStore.isMobile}
-  <MobileSheet id="time" title="Time Control" icon={timeIcon}>
+  <MobileSheet id="time" title="Time Control" icon={timeIcon} headerExtra={headerTabs}>
     {@render mobileContent()}
   </MobileSheet>
 {:else}
-  <DraggableWindow id="time-control" title="Time Control" icon={timeIcon} bind:open={uiStore.timeWindowOpen} initialX={10} initialY={34}>
+  <DraggableWindow id="time-control" title="Time Control" icon={timeIcon} headerExtra={headerTabs} bind:open={uiStore.timeWindowOpen} initialX={10} initialY={34}>
     {@render desktopContent()}
   </DraggableWindow>
 {/if}
@@ -346,7 +363,7 @@
     flex-direction: column;
     gap: 10px;
     min-width: 240px;
-    padding-bottom: 8px;
+
   }
   .tc-mobile { min-width: unset; }
   .transport-row {
@@ -458,60 +475,52 @@
     margin-bottom: 6px;
   }
 
-  /* ─── Desktop epoch footer ─── */
-  .epoch-footer {
-    border-top: 1px solid var(--border);
-    margin: 0 -14px -12px;
+  /* ─── Tab bar ─── */
+  .tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    margin-left: auto;
+    margin-right: 8px;
+  }
+
+  /* ─── Epoch panel ─── */
+  .epoch-panel {
     display: flex;
     flex-direction: column;
     align-items: center;
-  }
-  .expand-chevron {
-    background: none;
-    border: none;
-    color: var(--text-ghost);
-    cursor: pointer;
-    padding: 4px 0;
-    line-height: 0;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0.5;
-  }
-  .expand-chevron:hover { opacity: 1; }
-  .epoch-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 14px 8px;
-    width: 100%;
-    box-sizing: border-box;
+    gap: 6px;
+    padding: 12px 0;
   }
   .epoch-label {
     font-size: 10px;
     color: var(--text-ghost);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    flex-shrink: 0;
   }
   .epoch-value, .epoch-input {
-    font-size: 13px;
-    color: var(--text-dim);
+    font-size: 18px;
+    color: var(--text);
     font-family: inherit;
     background: none;
     border: 1px solid transparent;
-    padding: 1px 4px;
-    flex: 1;
+    padding: 2px 8px;
+    text-align: center;
     min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
   .epoch-value { cursor: text; }
-  .epoch-value:hover { color: var(--text); }
+  .epoch-value:hover { color: var(--border-hover); }
   .epoch-input {
     border-color: var(--border-hover);
     background: var(--ui-bg);
     color: var(--text);
     outline: none;
+  }
+  .epoch-hint {
+    font-size: 9px;
+    color: var(--text-ghost);
   }
   .warning {
     font-size: 11px;
