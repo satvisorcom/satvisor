@@ -56,11 +56,13 @@
 
     // View toggles
     actions.push({ id: 'view-spotlight', category: 'View', label: 'Toggle Spotlight', keywords: 'hide unselected focus', execute: () => { uiStore.setToggle('hideUnselected', !uiStore.hideUnselected); close(); } });
-    actions.push({ id: 'view-orbits', category: 'View', label: 'Toggle Orbits', keywords: 'trajectories paths', execute: () => { uiStore.setToggle('showOrbits', !uiStore.showOrbits); close(); } });
-    actions.push({ id: 'view-clouds', category: 'View', label: 'Toggle Clouds', execute: () => { uiStore.setToggle('showClouds', !uiStore.showClouds); close(); } });
-    actions.push({ id: 'view-night', category: 'View', label: 'Toggle Dark Side', keywords: 'night lights cities', execute: () => { uiStore.setToggle('showNightLights', !uiStore.showNightLights); close(); } });
+    actions.push({ id: 'view-orbits', category: 'View', label: 'Toggle Orbits', shortcut: 'L', keywords: 'trajectories paths', execute: () => { uiStore.setToggle('showOrbits', !uiStore.showOrbits); close(); } });
+    actions.push({ id: 'view-clouds', category: 'View', label: 'Toggle Clouds', shortcut: 'C', keywords: 'weather atmosphere', execute: () => { uiStore.setToggle('showClouds', !uiStore.showClouds); close(); } });
+    actions.push({ id: 'view-night', category: 'View', label: 'Toggle Night Lights', shortcut: 'N', keywords: 'dark side cities', execute: () => { uiStore.setToggle('showNightLights', !uiStore.showNightLights); close(); } });
     actions.push({ id: 'view-countries', category: 'View', label: 'Toggle Countries', keywords: 'borders outlines', execute: () => { uiStore.setToggle('showCountries', !uiStore.showCountries); close(); } });
     actions.push({ id: 'view-grid', category: 'View', label: 'Toggle Grid', keywords: 'latitude longitude lines', execute: () => { uiStore.setToggle('showGrid', !uiStore.showGrid); close(); } });
+    actions.push({ id: 'view-hud', category: 'View', label: 'Toggle HUD', shortcut: '`', keywords: 'chrome ui hide show interface', execute: () => { uiStore.chromeVisible = !uiStore.chromeVisible; close(); } });
+    actions.push({ id: 'view-reset-camera', category: 'View', label: 'Reset Camera', shortcut: 'Home', keywords: 'default zoom center', execute: () => { uiStore.onResetCamera?.(); close(); } });
     if (!uiStore.orreryMode) {
       actions.push({ id: 'view-2d3d', category: 'View', label: 'Toggle 2D / 3D', shortcut: 'M', keywords: 'map globe', execute: () => { uiStore.onToggleViewMode?.(); close(); } });
       actions.push({ id: 'view-sky', category: 'View', label: 'Toggle Sky View', shortcut: 'S', keywords: 'observer ground horizon azimuth elevation pov', execute: () => { uiStore.onToggleSkyView?.(); close(); } });

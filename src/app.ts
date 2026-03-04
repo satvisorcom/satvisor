@@ -904,6 +904,7 @@ export class App {
 
     // Sky view toggle
     uiStore.onToggleSkyView = () => this.toggleSkyView();
+    uiStore.onResetCamera = () => { this.camera.resetView(); if (this.lockedSat) this.exitSatLock(); else this.activeLock = TargetLock.NONE; };
 
     // Command palette: get satellite list for search
     uiStore.getSatelliteList = () => {

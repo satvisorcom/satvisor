@@ -31,16 +31,37 @@
       </div>
       <div class="section">
         <h3>Keyboard</h3>
-        <div class="ctrl-table">
-          <span class="ctrl-key"><kbd>Space</kbd></span><span class="ctrl-desc">Pause / resume</span>
-          <span class="ctrl-key"><kbd>.</kbd> <kbd>,</kbd></span><span class="ctrl-desc">Speed up / slow down</span>
-          <span class="ctrl-key"><kbd>/</kbd></span><span class="ctrl-desc">Reset speed</span>
-          <span class="ctrl-key"><kbd>M</kbd></span><span class="ctrl-desc">Toggle 2D / 3D map</span>
-          <span class="ctrl-key"><kbd>D</kbd></span><span class="ctrl-desc">Data sources</span>
-          <span class="ctrl-key"><kbd>P</kbd></span><span class="ctrl-desc">Pass predictor</span>
-          <span class="ctrl-key"><kbd>Ctrl</kbd>+<kbd>K</kbd></span><span class="ctrl-desc">Command palette</span>
-          <span class="ctrl-key"><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span class="ctrl-desc">Search satellite</span>
-          <span class="ctrl-key"><kbd>?</kbd></span><span class="ctrl-desc">Show help</span>
+        <div class="kb-group">
+          <span class="kb-label">Time</span>
+          <span class="kb-item"><kbd>Space</kbd> pause</span>
+          <span class="kb-item"><kbd>.</kbd><kbd>,</kbd> speed</span>
+          <span class="kb-item"><kbd>/</kbd> reset</span>
+        </div>
+        <div class="kb-group">
+          <span class="kb-label">View</span>
+          <span class="kb-item"><kbd>M</kbd> 2D/3D</span>
+          <span class="kb-item"><kbd>S</kbd> sky</span>
+          <span class="kb-item"><kbd>Home</kbd> reset</span>
+          <span class="kb-item"><kbd>`</kbd> HUD</span>
+        </div>
+        <div class="kb-group">
+          <span class="kb-label">Toggle</span>
+          <span class="kb-item"><kbd>C</kbd> clouds</span>
+          <span class="kb-item"><kbd>N</kbd> night</span>
+          <span class="kb-item"><kbd>L</kbd> orbits</span>
+        </div>
+        <div class="kb-group">
+          <span class="kb-label">Window</span>
+          <span class="kb-item"><kbd>D</kbd> sources</span>
+          <span class="kb-item"><kbd>P</kbd> passes</span>
+          <span class="kb-item"><kbd>O</kbd> observer</span>
+          <span class="kb-item"><kbd>R</kbd> radar</span>
+        </div>
+        <div class="kb-group">
+          <span class="kb-label">Search</span>
+          <span class="kb-item"><kbd>Ctrl</kbd><kbd>K</kbd> palette</span>
+          <span class="kb-item"><kbd>Ctrl</kbd><kbd>F</kbd> satellite</span>
+          <span class="kb-item"><kbd>?</kbd> help</span>
         </div>
       </div>
     </div>
@@ -94,8 +115,28 @@
     border: 1px solid var(--border);
     padding: 0 4px;
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-dim);
+  }
+  .kb-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    margin-bottom: 4px;
+  }
+  .kb-label {
+    color: var(--text-ghost);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    width: 42px;
+    flex-shrink: 0;
+  }
+  .kb-item {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
   }
   .touch-controls { display: none; }
   .desktop-controls { display: block; margin-bottom: 14px; }

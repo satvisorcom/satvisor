@@ -252,6 +252,7 @@ class UIStore {
   onDeselectSatellite: ((noradId: number) => void) | null = null;
   onToggleViewMode: (() => void) | null = null;
   onToggleSkyView: (() => void) | null = null;
+  onResetCamera: (() => void) | null = null;
   getSatelliteList: (() => { noradId: number; name: string }[]) | null = null;
   getSatelliteByIndex: ((index: number) => { name: string; noradId: number } | null) | null = null;
   getSelectedSatelliteList: (() => { noradId: number; name: string }[]) | null = null;
