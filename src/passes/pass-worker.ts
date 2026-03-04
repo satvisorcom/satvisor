@@ -156,13 +156,17 @@ function computePassesForSat(
 
         if (currentMaxEl >= minEl) {
           // Re-sample sky path at ~10s intervals for accurate filtering
+          // Sun/Moon barely move during a pass — compute once at midpoint
+          const midEpoch = (currentAosEpoch + losEpoch) / 2;
+          const passSunDir = sunDirectionECI(midEpoch);
+          const passMoonPos = moonPositionECI(midEpoch);
+          const passSolarEcl = solarEclipsePossible(passMoonPos, passSunDir);
+          // Re-sample sky path at ~10s intervals AND compute per-point magnitude.
+          // We track the best (brightest = lowest) magnitude across the pass.
+          let bestMag = Infinity;
+          let anySunlit = false;
           {
             const subStep = 10 / 86400; // 10 seconds in days
-            // Sun/Moon barely move during a pass — compute once at midpoint
-            const midEpoch = (currentAosEpoch + losEpoch) / 2;
-            const passSunDir = sunDirectionECI(midEpoch);
-            const passMoonPos = moonPositionECI(midEpoch);
-            const passSolarEcl = solarEclipsePossible(passMoonPos, passSunDir);
             const refined: { az: number; el: number; t: number; shadowFactor?: number }[] = [];
             for (let st = currentAosEpoch; st <= losEpoch; st += subStep) {
               const sp = propagateAtEpoch(satrec, st);
@@ -172,6 +176,17 @@ function computePassesForSat(
                 let sf = earthShadowFactor(sp.x, sp.y, sp.z, passSunDir);
                 if (sf >= 1.0 && passSolarEcl && isSolarEclipsed(sp.x, sp.y, sp.z, passMoonPos, passSunDir)) sf = 0.0;
                 refined.push({ az: sae.az, el: sae.el, t: st, shadowFactor: sf });
+                // Magnitude at this point (only if sunlit and stdMag known)
+                if (sf > 0) {
+                  anySunlit = true;
+                  if (stdMag !== null) {
+                    const obs = observerEci(obsLat, obsLon, obsAlt, sg);
+                    const range = slantRange(sp, obs);
+                    const phase = computePhaseAngle(sp, passSunDir, obs);
+                    const mag = estimateVisualMagnitude(stdMag, range, phase, sae.el);
+                    if (mag < bestMag) bestMag = mag;
+                  }
+                }
               }
             }
             // Add exact LOS point
@@ -182,9 +197,22 @@ function computePassesForSat(
               let sf = earthShadowFactor(lp.x, lp.y, lp.z, passSunDir);
               if (sf >= 1.0 && passSolarEcl && isSolarEclipsed(lp.x, lp.y, lp.z, passMoonPos, passSunDir)) sf = 0.0;
               refined.push({ az: lae.az, el: lae.el, t: losEpoch, shadowFactor: sf });
+              if (sf > 0) {
+                anySunlit = true;
+                if (stdMag !== null) {
+                  const obs = observerEci(obsLat, obsLon, obsAlt, lg);
+                  const range = slantRange(lp, obs);
+                  const phase = computePhaseAngle(lp, passSunDir, obs);
+                  const mag = estimateVisualMagnitude(stdMag, range, phase, lae.el);
+                  if (mag < bestMag) bestMag = mag;
+                }
+              }
             }
             currentSkyPath = refined;
           }
+          let eclipsed = !anySunlit;
+          let peakMag: number | null = bestMag < Infinity ? Math.round(bestMag * 100) / 100 : null;
+
           // Max elevation filter (discard low-peak passes early, before expensive sun calcs)
           if (filters && filters.maxElevation < 90 && currentMaxEl < filters.maxElevation) {
             // pass doesn't reach the required peak — skip
@@ -222,28 +250,16 @@ function computePassesForSat(
             losAz = getAzEl(losPos.x, losPos.y, losPos.z, losGmst, obsLat, obsLon, obsAlt).az;
           }
 
-          // Eclipse check, sun context, and magnitude estimation at max elevation
-          let eclipsed = false;
-          let peakMag: number | null = null;
+          // Sun context at max elevation (sunAlt/elongation barely change during a pass)
           let sunAlt = 0;
           let elongation = 180;
           const maxElPos = propagateAtEpoch(satrec, currentMaxElEpoch);
           if (maxElPos) {
-            const sunDir = sunDirectionECI(currentMaxElEpoch);
             const gmstMaxEl = epochToGmst(currentMaxElEpoch) * DEG2RAD;
-            const obsPos = observerEci(obsLat, obsLon, obsAlt, gmstMaxEl);
-
             sunAlt = sunAltitude(currentMaxElEpoch, obsLat, obsLon, obsAlt, gmstMaxEl);
-            const moonPosMaxEl = moonPositionECI(currentMaxElEpoch);
-            eclipsed = isEclipsed(maxElPos.x, maxElPos.y, maxElPos.z, sunDir)
-              || (solarEclipsePossible(moonPosMaxEl, sunDir) && isSolarEclipsed(maxElPos.x, maxElPos.y, maxElPos.z, moonPosMaxEl, sunDir));
-            elongation = solarElongation(maxElPos, sunDir, obsPos);
-
-            if (!eclipsed && stdMag !== null) {
-              const range = slantRange(maxElPos, obsPos);
-              const phase = computePhaseAngle(maxElPos, sunDir, obsPos);
-              peakMag = estimateVisualMagnitude(stdMag, range, phase, currentMaxEl);
-            }
+            const sunDirMaxEl = sunDirectionECI(currentMaxElEpoch);
+            const obsMaxEl = observerEci(obsLat, obsLon, obsAlt, gmstMaxEl);
+            elongation = solarElongation(maxElPos, sunDirMaxEl, obsMaxEl);
           }
 
           // Visibility filter (after sun/eclipse are computed)

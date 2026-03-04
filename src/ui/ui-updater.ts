@@ -164,16 +164,27 @@ export class UIUpdater {
         const obs = observerStore.location;
         const obsPos = observerEci(obs.lat, obs.lon, obs.alt, gmstRad);
 
-        if (isEclipsed(satEci.x, satEci.y, satEci.z, sunDir)) {
+        const { el } = getAzEl(satEci.x, satEci.y, satEci.z, gmstRad, obs.lat, obs.lon, obs.alt);
+        if (el <= 0) {
+          // Below horizon — magnitude not meaningful
+        } else if (isEclipsed(satEci.x, satEci.y, satEci.z, sunDir)) {
           magStr = '<br>Magnitude: eclipsed';
         } else if (hSat.stdMag === null) {
           magStr = '<br>Magnitude: unknown';
         } else {
           const range = slantRange(satEci, obsPos);
           const phase = computePhaseAngle(satEci, sunDir, obsPos);
-          const { el } = getAzEl(satEci.x, satEci.y, satEci.z, gmstRad, obs.lat, obs.lon, obs.alt);
-          const mag = estimateVisualMagnitude(hSat.stdMag, range, phase, Math.max(0, el));
+          const mag = estimateVisualMagnitude(hSat.stdMag, range, phase, el);
+          // Find best pass peak magnitude for this satellite
+          const passes = uiStore.passesTab === 'nearby' ? uiStore.nearbyPasses : uiStore.passes;
+          let bestPeak: number | null = null;
+          for (const p of passes) {
+            if (p.satNoradId === hSat.noradId && p.peakMag !== null) {
+              if (bestPeak === null || p.peakMag < bestPeak) bestPeak = p.peakMag;
+            }
+          }
           magStr = `<br>Magnitude: ${mag.toFixed(1)}`;
+          if (bestPeak !== null) magStr += `<span style="color:var(--text-ghost)">/${bestPeak.toFixed(1)}</span>`;
         }
 
       }

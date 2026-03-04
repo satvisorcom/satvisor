@@ -75,7 +75,13 @@
     tip += `\nFrom sun: ${pass.elongation.toFixed(0)}\u00b0`;
     if (pass.sunAlt > 0) tip += '\nSky too bright for observation';
     else if (pass.eclipsed) tip += '\nSatellite in Earth\u2019s shadow';
-    else if (pass.peakMag !== null) tip += `\nMagnitude: ${pass.peakMag.toFixed(2)}`;
+    else if (pass.peakMag !== null) {
+      if (isActive(pass) && uiStore.livePassMag !== null) {
+        tip += `\nMagnitude: ${uiStore.livePassMag.toFixed(1)} / ${pass.peakMag.toFixed(1)} peak`;
+      } else {
+        tip += `\nPeak magnitude: ${pass.peakMag.toFixed(1)}`;
+      }
+    }
     if (!pass.eclipsed && pass.elongation < 20) tip += '\nClose to sun \u2014 observation difficult';
     return tip;
   }
@@ -637,7 +643,6 @@
   .td-mag .eclipse-icon :global(svg) { width: 10px; height: 10px; display: block; opacity: 0.35; }
   .td-mag .sun-icon { display: inline-flex; align-items: center; margin-right: 2px; }
   .td-mag .sun-icon :global(svg) { width: 9px; height: 9px; display: block; }
-
   .action-icon {
     background: none;
     border: none;

@@ -129,6 +129,7 @@ class UIStore {
   passesProgress = $state(0);
   selectedPassIdx = $state(-1);
   livePassAzEl = $state<{ az: number; el: number } | null>(null);
+  livePassMag = $state<number | null>(null);
 
   // Time window tab
   timeTab = $state<'datetime' | 'epoch'>('datetime');

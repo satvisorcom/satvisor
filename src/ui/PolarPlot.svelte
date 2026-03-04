@@ -375,12 +375,12 @@
           ctx.fillStyle = palette.textFaint;
           ctx.fillText(`Range ${Math.round(nearest.rangeKm)} km`, 8, row3Y);
         }
+        ctx.textAlign = 'right';
         if (nearest.mag !== undefined) {
-          ctx.textAlign = 'right';
           ctx.fillStyle = palette.textMuted;
-          ctx.fillText(`mag ${nearest.mag.toFixed(1)}`, SIZE - 8, row3Y);
+          const peakStr = pass.peakMag !== null ? ` / ${pass.peakMag.toFixed(1)} peak` : '';
+          ctx.fillText(`mag ${nearest.mag.toFixed(1)}${peakStr}`, SIZE - 8, row3Y);
         } else if ((nearest.shadowFactor ?? 1) < 1) {
-          ctx.textAlign = 'right';
           ctx.fillStyle = palette.textGhost;
           ctx.fillText('eclipsed', SIZE - 8, row3Y);
         }

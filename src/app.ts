@@ -1834,15 +1834,34 @@ export class App {
             const eci = result.position;
             const gmstRad = gmstDeg * DEG2RAD;
             const obs = observerStore.location;
-            uiStore.livePassAzEl = getAzEl(eci.x, eci.y, eci.z, gmstRad, obs.lat, obs.lon, obs.alt);
+            const ae = getAzEl(eci.x, eci.y, eci.z, gmstRad, obs.lat, obs.lon, obs.alt);
+            uiStore.livePassAzEl = ae;
+            // Live magnitude for active pass
+            if (sat.stdMag !== null) {
+              const sunDir = sunDirectionECI(epoch);
+              const sf = earthShadowFactor(eci.x, eci.y, eci.z, sunDir);
+              if (sf > 0) {
+                const obsPos = observerEci(obs.lat, obs.lon, obs.alt, gmstRad);
+                const phase = computePhaseAngle(eci, sunDir, obsPos);
+                const range = slantRange(eci, obsPos);
+                uiStore.livePassMag = estimateVisualMagnitude(sat.stdMag, range, phase, ae.el);
+              } else {
+                uiStore.livePassMag = null; // eclipsed
+              }
+            } else {
+              uiStore.livePassMag = null;
+            }
           } else {
             uiStore.livePassAzEl = null;
+            uiStore.livePassMag = null;
           }
         } else {
           uiStore.livePassAzEl = null;
+          uiStore.livePassMag = null;
         }
       } else {
         uiStore.livePassAzEl = null;
+        uiStore.livePassMag = null;
       }
     }
 
