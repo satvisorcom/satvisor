@@ -1,32 +1,24 @@
 /**
  * Runtime catalog data loader.
- * Fetches satnogs + stdmag from satvisor-data mirror, caches in localStorage.
+ * Fetches satnogs + stdmag from satvisor-data mirror, caches in IndexedDB.
  */
 import { getMirrorCatalogUrl } from './tle-sources';
+import { cacheGet, cachePut, type CacheEntry } from './cache-db';
 
 const CACHE_PREFIX = 'threescope_catalog_';
-const CACHE_TS_SUFFIX = '_ts';
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const REFRESH_AGE_MS = 24 * 60 * 60 * 1000; // 1 day — background refresh
 
-// ── localStorage helpers (no double-serialization) ──
+// ── IndexedDB cache helpers ──
 
-function cacheRead(name: string): { text: string; age: number } | null {
-  try {
-    const text = localStorage.getItem(CACHE_PREFIX + name);
-    if (!text) return null;
-    const ts = Number(localStorage.getItem(CACHE_PREFIX + name + CACHE_TS_SUFFIX));
-    if (!ts) return { text, age: Infinity };
-    const age = Date.now() - ts;
-    return { text, age };
-  } catch { return null; }
+async function catalogCacheRead(name: string): Promise<{ text: string; age: number } | null> {
+  const entry = await cacheGet(CACHE_PREFIX + name);
+  if (!entry) return null;
+  return { text: entry.data, age: Date.now() - entry.ts };
 }
 
-function cacheWrite(name: string, text: string) {
-  try {
-    localStorage.setItem(CACHE_PREFIX + name, text);
-    localStorage.setItem(CACHE_PREFIX + name + CACHE_TS_SUFFIX, String(Date.now()));
-  } catch { /* localStorage full */ }
+async function catalogCacheWrite(name: string, text: string) {
+  await cachePut(CACHE_PREFIX + name, { ts: Date.now(), data: text });
 }
 
 // ── stdmag (visual magnitudes) ──
@@ -65,8 +57,8 @@ export async function loadStdmag(): Promise<Map<number, number>> {
   if (_stdmagPromise) return _stdmagPromise;
 
   _stdmagPromise = (async () => {
-    // Try localStorage cache
-    const cached = cacheRead('stdmag');
+    // Try IndexedDB cache
+    const cached = await catalogCacheRead('stdmag');
     if (cached && cached.age < CACHE_MAX_AGE_MS) {
       try {
         _stdmagMap = parseStdmag(cached.text);
@@ -91,7 +83,7 @@ async function fetchAndCacheStdmag(): Promise<Map<number, number>> {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const text = await resp.text();
     _stdmagMap = parseStdmag(text);
-    cacheWrite('stdmag', text);
+    catalogCacheWrite('stdmag', text);
     _onStdmagRefresh?.();
     return _stdmagMap;
   } catch {
@@ -132,7 +124,7 @@ export async function loadSatnogs(): Promise<RawSatnogsData> {
   if (_satnogsPromise) return _satnogsPromise;
 
   _satnogsPromise = (async () => {
-    const cached = cacheRead('satnogs');
+    const cached = await catalogCacheRead('satnogs');
     if (cached && cached.age < CACHE_MAX_AGE_MS) {
       try {
         _satnogsData = JSON.parse(cached.text) as RawSatnogsData;
@@ -155,7 +147,7 @@ async function fetchAndCacheSatnogs(): Promise<RawSatnogsData> {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const text = await resp.text();
     _satnogsData = JSON.parse(text) as RawSatnogsData;
-    cacheWrite('satnogs', text);
+    catalogCacheWrite('satnogs', text);
     return _satnogsData;
   } catch {
     if (!_satnogsData) _satnogsData = {};

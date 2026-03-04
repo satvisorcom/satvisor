@@ -1,4 +1,5 @@
 import { TLE_SOURCES } from '../data/tle-sources';
+import { cacheGetRaw, cachePutRaw, cacheGet, cacheDelete } from '../data/cache-db';
 
 export type SourceType = 'celestrak' | 'url' | 'text';
 
@@ -139,11 +140,9 @@ class SourcesStore {
     return id;
   }
 
-  addCustomFile(name: string, text: string): string {
+  async addCustomFile(name: string, text: string): Promise<string> {
     const id = 'custom:' + crypto.randomUUID();
-    try {
-      localStorage.setItem(TEXT_KEY_PREFIX + id, text);
-    } catch { /* localStorage full */ }
+    await cachePutRaw(TEXT_KEY_PREFIX + id, text);
     this.sources = [...this.sources, {
       id, name, type: 'text', builtin: false,
     }];
@@ -163,11 +162,9 @@ class SourcesStore {
     this.enabledIds = next;
     this.persistCustom();
     this.persistEnabled();
-    // Clean up localStorage
-    try {
-      localStorage.removeItem(TEXT_KEY_PREFIX + id);
-      localStorage.removeItem('tlescope_tle_custom_' + id);
-    } catch { /* ignore */ }
+    // Clean up IndexedDB
+    cacheDelete(TEXT_KEY_PREFIX + id);
+    cacheDelete('tlescope_tle_custom_' + id);
     this.onSourcesChange?.();
   }
 
@@ -185,51 +182,40 @@ class SourcesStore {
   }
 
   /** Get raw TLE text for a text-type custom source */
-  getCustomText(id: string): string {
-    try {
-      return localStorage.getItem(TEXT_KEY_PREFIX + id) ?? '';
-    } catch { return ''; }
+  async getCustomText(id: string): Promise<string> {
+    return (await cacheGetRaw(TEXT_KEY_PREFIX + id)) ?? '';
   }
 
   /** Get raw data text (OMM JSON or TLE) for any source type from its cache/storage */
-  getRawText(src: TLESourceConfig): string | null {
-    try {
-      if (src.type === 'text') {
-        return localStorage.getItem(TEXT_KEY_PREFIX + src.id) || null;
-      }
-      if (src.type === 'celestrak' && src.group) {
-        const raw = localStorage.getItem('tlescope_tle_' + src.group);
-        if (!raw) return null;
-        return (JSON.parse(raw) as { data: string }).data;
-      }
-      if (src.type === 'url') {
-        const raw = localStorage.getItem('tlescope_tle_custom_' + src.id);
-        if (!raw) return null;
-        return (JSON.parse(raw) as { data: string }).data;
-      }
-    } catch { /* corrupt cache */ }
+  async getRawText(src: TLESourceConfig): Promise<string | null> {
+    if (src.type === 'text') {
+      return (await cacheGetRaw(TEXT_KEY_PREFIX + src.id)) || null;
+    }
+    if (src.type === 'celestrak' && src.group) {
+      const entry = await cacheGet('tlescope_tle_' + src.group);
+      return entry?.data ?? null;
+    }
+    if (src.type === 'url') {
+      const entry = await cacheGet('tlescope_tle_custom_' + src.id);
+      return entry?.data ?? null;
+    }
     return null;
   }
 
   /** Overwrite stored TLE text for a custom text source and trigger reload */
-  updateCustomText(id: string, text: string) {
-    try {
-      localStorage.setItem(TEXT_KEY_PREFIX + id, text);
-    } catch { /* localStorage full */ }
+  async updateCustomText(id: string, text: string) {
+    await cachePutRaw(TEXT_KEY_PREFIX + id, text);
     this.onSourcesChange?.();
   }
 
   /** Convert a URL-type custom source to a text-type source */
-  convertToText(id: string, text: string) {
-    try {
-      localStorage.setItem(TEXT_KEY_PREFIX + id, text);
-    } catch { /* localStorage full */ }
+  async convertToText(id: string, text: string) {
+    await cachePutRaw(TEXT_KEY_PREFIX + id, text);
     this.sources = this.sources.map(s =>
       s.id === id ? { ...s, type: 'text' as SourceType, url: undefined } : s
     );
     this.persistCustom();
-    // Clean up old URL cache
-    try { localStorage.removeItem('tlescope_tle_custom_' + id); } catch {}
+    cacheDelete('tlescope_tle_custom_' + id);
     this.onSourcesChange?.();
   }
 

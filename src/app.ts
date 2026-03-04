@@ -28,6 +28,7 @@ import { OrreryController } from './scene/orrery-controller';
 import { getMapCoordinates, latLonToSurface, observerFrame, observerFrameInto } from './astro/coordinates';
 import { calculateSunPosition } from './astro/sun';
 import { fetchTLEData, parseSatelliteDataParallel, warmupTLEWorkers, evictExpiredTLECaches } from './data/tle-loader';
+import { cachePut, cleanupLocalStorage } from './data/cache-db';
 import { getSatellitesByFreqRange } from './data/satnogs';
 import { loadStdmag, loadSatnogs, applyStdmag, onStdmagRefresh } from './data/catalog';
 import { sourcesStore, type TLESourceConfig } from './stores/sources.svelte';
@@ -248,7 +249,9 @@ export class App {
     this.scene2d = new THREE.Scene();
     this.scene2d.background = new THREE.Color(palette.bg);
 
-    // Evict expired TLE caches on startup to prevent unbounded localStorage growth
+    // Clean up old localStorage cache entries (migrated to IndexedDB)
+    cleanupLocalStorage();
+    // Evict expired TLE caches on startup to prevent unbounded growth
     evictExpiredTLECaches();
 
     // Warm up TLE parsing workers — compile in background during texture download.
@@ -579,12 +582,10 @@ export class App {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const text = await resp.text();
         satellites = await parseSatelliteDataParallel(text);
-        try {
-          localStorage.setItem('tlescope_tle_custom_' + src.id, JSON.stringify({ ts: Date.now(), data: text, count: satellites.length }));
-        } catch { /* localStorage full */ }
+        await cachePut('tlescope_tle_custom_' + src.id, { ts: Date.now(), data: text, count: satellites.length });
         sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded' });
       } else {
-        const text = sourcesStore.getCustomText(src.id);
+        const text = await sourcesStore.getCustomText(src.id);
         satellites = await parseSatelliteDataParallel(text);
         sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded' });
       }

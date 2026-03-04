@@ -3,6 +3,8 @@ import type { Satellite } from '../types';
 import { parseTLE, parseOMM } from '../astro/propagator';
 import { getMirrorUrl, getCelestrakUrl, getSourceByGroup } from './tle-sources';
 import { applyStdmag } from './catalog';
+import { detectFormat, normalizeToOMM } from './omm-formats';
+import { cacheGet, cacheGetRaw, cachePut, cacheDelete, cacheKeys } from './cache-db';
 
 const CACHE_KEY_PREFIX = 'tlescope_tle_';
 const CACHE_MAX_AGE_MS = __TLE_CACHE_MAX_AGE_H__ * 60 * 60 * 1000;
@@ -44,11 +46,10 @@ function isOMMJson(text: string): boolean {
   return text.trimStart()[0] === '[';
 }
 
-// ── Unified parsing (auto-detects JSON vs TLE) ──
+// ── Unified parsing (auto-detects JSON, CSV, XML, KVN, TLE) ──
 
-/** Parse OMM JSON array directly via satellite.js json2satrec. */
-function parseOMMJson(text: string): Satellite[] {
-  const records: Record<string, unknown>[] = JSON.parse(text);
+/** Parse OMM records (already-parsed objects) via satellite.js json2satrec. */
+function parseOMMRecords(records: Record<string, unknown>[]): Satellite[] {
   const satellites: Satellite[] = [];
   for (const omm of records) {
     const sat = parseOMM(omm);
@@ -57,9 +58,19 @@ function parseOMMJson(text: string): Satellite[] {
   return satellites;
 }
 
-/** Parse satellite data from either OMM JSON or TLE text. */
+/** Parse OMM JSON text directly. */
+function parseOMMJson(text: string): Satellite[] {
+  return parseOMMRecords(JSON.parse(text));
+}
+
+/** Parse satellite data from any supported format (JSON, CSV, XML, KVN, TLE). */
 export function parseSatelliteData(text: string): Satellite[] {
-  return isOMMJson(text) ? parseOMMJson(text) : parseTLEText(text);
+  const fmt = detectFormat(text);
+  if (fmt === 'tle') return parseTLEText(text);
+  if (fmt === 'json') return parseOMMJson(text);
+  // CSV, XML, KVN: normalize to OMM records, then parse
+  const records = normalizeToOMM(text);
+  return records ? parseOMMRecords(records) : [];
 }
 
 // ── TLE text parsing ──
@@ -69,12 +80,12 @@ export function parseTLEText(text: string): Satellite[] {
   const satellites: Satellite[] = [];
 
   let i = 0;
-  while (i + 2 < lines.length) {
-    if (lines[i + 1].startsWith('1 ') && lines[i + 2].startsWith('2 ')) {
+  while (i < lines.length) {
+    if (i + 2 < lines.length && lines[i + 1].startsWith('1 ') && lines[i + 2].startsWith('2 ')) {
       const sat = parseTLE(lines[i], lines[i + 1], lines[i + 2]);
       if (sat) satellites.push(sat);
       i += 3;
-    } else if (lines[i].startsWith('1 ') && lines[i + 1].startsWith('2 ')) {
+    } else if (i + 1 < lines.length && lines[i].startsWith('1 ') && lines[i + 1].startsWith('2 ')) {
       const noradId = lines[i].substring(2, 7).trim();
       const sat = parseTLE(noradId, lines[i], lines[i + 1]);
       if (sat) satellites.push(sat);
@@ -130,11 +141,11 @@ function extractTLEEntries(text: string): [string, string, string][] {
   const lines = text.split('\n').map(l => l.trimEnd()).filter(l => l.length > 0);
   const entries: [string, string, string][] = [];
   let i = 0;
-  while (i + 2 < lines.length) {
-    if (lines[i + 1].startsWith('1 ') && lines[i + 2].startsWith('2 ')) {
+  while (i < lines.length) {
+    if (i + 2 < lines.length && lines[i + 1].startsWith('1 ') && lines[i + 2].startsWith('2 ')) {
       entries.push([lines[i], lines[i + 1], lines[i + 2]]);
       i += 3;
-    } else if (lines[i].startsWith('1 ') && lines[i + 1].startsWith('2 ')) {
+    } else if (i + 1 < lines.length && lines[i].startsWith('1 ') && lines[i + 1].startsWith('2 ')) {
       entries.push([lines[i].substring(2, 7).trim(), lines[i], lines[i + 1]]);
       i += 2;
     } else {
@@ -169,28 +180,28 @@ function countTleLines(text: string): number {
 
 /** Parse satellite data, dispatching to web workers for large datasets (>3000 sats). */
 export async function parseSatelliteDataParallel(text: string): Promise<Satellite[]> {
-  const json = isOMMJson(text);
+  const fmt = detectFormat(text);
+  const isOMM = fmt !== 'tle';
 
-  // For JSON, parse once upfront to avoid double JSON.parse (count + extract)
-  // For TLE, use cheap line scan for count, extract only if above threshold
+  // Normalize CSV/XML/KVN upfront into OMM records (lightweight text parsing)
+  // For JSON, parse once; for TLE, use cheap line scan
   let items: unknown[] | null = null;
   let satCount: number;
-  if (json) {
+  if (fmt === 'json') {
     try { items = JSON.parse(text); } catch { return []; }
     satCount = items!.length;
+  } else if (fmt === 'csv' || fmt === 'xml' || fmt === 'kvn') {
+    items = normalizeToOMM(text);
+    satCount = items?.length ?? 0;
+    if (!satCount) return [];
   } else {
     satCount = countTleLines(text);
   }
 
   if (satCount < PARALLEL_THRESHOLD || workersReady < 2) {
-    // Sync path — reuse already-parsed JSON items if available
-    if (json && items) {
-      const satellites: Satellite[] = [];
-      for (const omm of items as Record<string, unknown>[]) {
-        const sat = parseOMM(omm);
-        if (sat) satellites.push(sat);
-      }
-      return satellites;
+    // Sync path — reuse already-parsed OMM items if available
+    if (isOMM && items) {
+      return parseOMMRecords(items as Record<string, unknown>[]);
     }
     return parseSatelliteData(text);
   }
@@ -199,7 +210,7 @@ export async function parseSatelliteDataParallel(text: string): Promise<Satellit
     const pool = getWorkerPool();
     const useCount = Math.min(workersReady, pool.length);
 
-    // For OMM JSON, items already parsed; for TLE, extract [name, line1, line2] triplets
+    // For OMM formats, items already parsed; for TLE, extract [name, line1, line2] triplets
     if (!items) items = extractTLEEntries(text);
     const chunkSize = Math.ceil(items.length / useCount);
 
@@ -210,8 +221,8 @@ export async function parseSatelliteDataParallel(text: string): Promise<Satellit
       promises.push(new Promise<any[]>((resolve) => {
         const id = nextMsgId++;
         pendingWorkerCalls.set(id, resolve);
-        // Worker accepts either { entries, id } (TLE) or { ommRecords, id } (JSON)
-        if (json) {
+        // Worker accepts either { entries, id } (TLE) or { ommRecords, id } (OMM)
+        if (isOMM) {
           pool[i].postMessage({ ommRecords: chunk, id });
         } else {
           pool[i].postMessage({ entries: chunk, id });
@@ -235,150 +246,82 @@ export async function parseSatelliteDataParallel(text: string): Promise<Satellit
   }
 }
 
-// ── Cache ──
+// ── Cache (IndexedDB) ──
 
-function loadFromCache(group: string, ignoreAge = false): { data: string; age: number } | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY_PREFIX + group);
-    if (!raw) return null;
-    const { ts, data } = JSON.parse(raw);
-    const age = Date.now() - ts;
-    if (!ignoreAge && age > CACHE_MAX_AGE_MS) return null;
-    return { data, age };
-  } catch {
-    return null;
-  }
+async function loadFromCache(group: string, ignoreAge = false): Promise<{ data: string; age: number } | null> {
+  const entry = await cacheGet(CACHE_KEY_PREFIX + group);
+  if (!entry) return null;
+  const age = Date.now() - entry.ts;
+  if (!ignoreAge && age > CACHE_MAX_AGE_MS) return null;
+  return { data: entry.data, age };
 }
 
-export function getCacheAge(group: string): number | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY_PREFIX + group);
-    if (!raw) return null;
-    const { ts } = JSON.parse(raw);
-    return Date.now() - ts;
-  } catch {
-    return null;
-  }
+export async function getCacheAge(group: string): Promise<number | null> {
+  const entry = await cacheGet(CACHE_KEY_PREFIX + group);
+  if (!entry) return null;
+  return Date.now() - entry.ts;
 }
 
-function saveToCache(group: string, data: string, count?: number) {
-  const value = JSON.stringify({ ts: Date.now(), data, count });
-  try {
-    localStorage.setItem(CACHE_KEY_PREFIX + group, value);
-  } catch {
-    // localStorage full — evict oldest non-active TLE caches and retry
-    console.warn(`[TLE cache] localStorage quota exceeded while caching "${group}", evicting stale entries...`);
-    evictStaleTLECaches(group);
-    try {
-      localStorage.setItem(CACHE_KEY_PREFIX + group, value);
-    } catch {
-      console.warn(`[TLE cache] still over quota after eviction, cache for "${group}" not saved`);
-    }
-  }
-}
-
-/** Remove TLE cache entries that aren't currently enabled, oldest first. */
-function evictStaleTLECaches(keepGroup: string) {
-  // Read active source IDs from localStorage to avoid circular imports
-  const activeGroups = new Set<string>();
-  activeGroups.add(keepGroup);
-  try {
-    const enabledRaw = localStorage.getItem('satvisor_sources_enabled');
-    if (enabledRaw) {
-      // Enabled IDs are like "celestrak:visual" — the group is after the colon
-      for (const id of JSON.parse(enabledRaw)) {
-        const group = typeof id === 'string' ? id.split(':').slice(1).join(':') : '';
-        if (group) activeGroups.add(group);
-      }
-    }
-  } catch {}
-
-  const entries: { key: string; ts: number }[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key || !key.startsWith(CACHE_KEY_PREFIX)) continue;
-    const group = key.slice(CACHE_KEY_PREFIX.length);
-    if (activeGroups.has(group)) continue;
-    try {
-      const parsed = JSON.parse(localStorage.getItem(key)!);
-      entries.push({ key, ts: parsed.ts ?? 0 });
-    } catch {
-      entries.push({ key, ts: 0 });
-    }
-  }
-  // Evict oldest first
-  entries.sort((a, b) => a.ts - b.ts);
-  for (const e of entries) {
-    console.warn(`[TLE cache] evicting inactive source "${e.key.slice(CACHE_KEY_PREFIX.length)}"`);
-    localStorage.removeItem(e.key);
-  }
+async function saveToCache(group: string, data: string, count?: number) {
+  await cachePut(CACHE_KEY_PREFIX + group, { ts: Date.now(), data, count });
 }
 
 /**
  * Delete all TLE cache entries older than CACHE_EVICT_AGE_MS.
- * Called once at startup to prevent unbounded localStorage growth.
+ * Called once at startup to prevent unbounded IndexedDB growth.
  * Set VITE_TLE_CACHE_EVICT_AGE_H=0 to disable (useful for offline/air-gapped deployments).
  */
-export function evictExpiredTLECaches() {
+export async function evictExpiredTLECaches() {
   if (!CACHE_EVICT_AGE_MS) return;
-  if (!navigator.onLine) return; // don't evict if we can't refetch
+  if (!navigator.onLine) return;
   const now = Date.now();
-  const toRemove: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key || !key.startsWith(CACHE_KEY_PREFIX)) continue;
-    try {
-      const { ts } = JSON.parse(localStorage.getItem(key)!);
-      if (now - ts > CACHE_EVICT_AGE_MS) toRemove.push(key);
-    } catch {
-      toRemove.push(key); // unparseable — remove
+  const keys = await cacheKeys();
+  for (const key of keys) {
+    if (!key.startsWith(CACHE_KEY_PREFIX)) continue;
+    const entry = await cacheGet(key);
+    if (!entry) continue;
+    if (now - entry.ts > CACHE_EVICT_AGE_MS) {
+      console.warn(`[TLE cache] evicting expired "${key.slice(CACHE_KEY_PREFIX.length)}" (older than ${__TLE_CACHE_EVICT_AGE_H__}h)`);
+      await cacheDelete(key);
     }
-  }
-  for (const key of toRemove) {
-    console.warn(`[TLE cache] evicting expired cache "${key.slice(CACHE_KEY_PREFIX.length)}" (older than ${__TLE_CACHE_EVICT_AGE_H__}h)`);
-    localStorage.removeItem(key);
   }
 }
 
-/** Read cached data text from localStorage. Returns null if not cached. */
-function readCachedText(cacheKey: string, isJsonWrapped: boolean): string | null {
-  try {
-    const raw = localStorage.getItem(cacheKey);
-    if (!raw) return null;
-    return isJsonWrapped ? (JSON.parse(raw) as { data: string }).data : raw;
-  } catch {
-    return null;
-  }
+/** Read cached data text from IndexedDB (supports both CacheEntry and raw string). */
+async function readCachedText(cacheKey: string): Promise<string | null> {
+  // Try CacheEntry first (JSON-wrapped), then raw string
+  const entry = await cacheGet(cacheKey);
+  if (entry?.data) return entry.data;
+  const raw = await cacheGetRaw(cacheKey);
+  return raw;
 }
 
 /** Check if a NORAD ID exists in cached data (auto-detects format). */
-export function cachedTleHasNorad(cacheKey: string, noradId: number, isJsonWrapped = true): boolean {
-  const text = readCachedText(cacheKey, isJsonWrapped);
+export async function cachedTleHasNorad(cacheKey: string, noradId: number): Promise<boolean> {
+  const text = await readCachedText(cacheKey);
   if (!text) return false;
-  if (isOMMJson(text)) {
-    // JSON: search for "NORAD_CAT_ID":NNNNN
-    return text.includes(`"NORAD_CAT_ID":${noradId}`) || text.includes(`"NORAD_CAT_ID": ${noradId}`);
-  }
+  // JSON/CSV: search for NORAD ID as value
+  if (text.includes(`"NORAD_CAT_ID":${noradId}`) || text.includes(`"NORAD_CAT_ID": ${noradId}`)) return true;
   // TLE: search for line-1 pattern
   const padded = String(noradId).padStart(5, '0');
   const needle = '1 ' + padded;
-  return text.includes('\n' + needle) || text.startsWith(needle);
+  if (text.includes('\n' + needle) || text.startsWith(needle)) return true;
+  // CSV (unquoted): NORAD ID appears as a bare value after comma
+  if (text.includes(`,${noradId},`) || text.includes(`,${noradId}\n`)) return true;
+  return false;
 }
 
-/** Get satellite count from a cached source. Uses stored count if available, falls back to scan. */
-export function cachedTleSatCount(cacheKey: string, isJsonWrapped = true): number {
-  try {
-    const raw = localStorage.getItem(cacheKey);
-    if (!raw) return 0;
-    if (isJsonWrapped) {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed.count === 'number') return parsed.count;
-      return countSatellites(parsed.data);
-    }
-    return countSatellites(raw);
-  } catch {
-    return 0;
+/** Get satellite count from a cached source. */
+export async function cachedTleSatCount(cacheKey: string): Promise<number> {
+  const entry = await cacheGet(cacheKey);
+  if (entry) {
+    if (typeof entry.count === 'number') return entry.count;
+    return countSatellites(entry.data);
   }
+  // Raw string (text-type sources)
+  const raw = await cacheGetRaw(cacheKey);
+  if (raw) return countSatellites(raw);
+  return 0;
 }
 
 // ── Fetching with mirror-first chain ──
@@ -401,8 +344,8 @@ export async function fetchTLEData(
   onStatus?: (msg: string) => void,
   forceRetry = false,
 ): Promise<FetchResult> {
-  // Try localStorage cache first (skip if forcing refresh)
-  const cached = !forceRetry ? loadFromCache(group) : null;
+  // Try IndexedDB cache first (skip if forcing refresh)
+  const cached = !forceRetry ? await loadFromCache(group) : null;
   if (cached) {
     onStatus?.('Loading cached data...');
     return { satellites: await parseSatelliteDataParallel(cached.data), source: 'cache', cacheAge: cached.age };
@@ -410,7 +353,7 @@ export async function fetchTLEData(
 
   // Skip network if rate limited (unless manual retry)
   if (!forceRetry && isRateLimited()) {
-    const stale = loadFromCache(group, true);
+    const stale = await loadFromCache(group, true);
     if (stale) {
       onStatus?.('Rate limited, using cached data');
       return { satellites: await parseSatelliteDataParallel(stale.data), source: 'stale-cache', cacheAge: stale.age, rateLimited: true };
@@ -430,7 +373,7 @@ export async function fetchTLEData(
       const text = await resp.text();
       if (text.trim().length > 0) {
         const satellites = await parseSatelliteDataParallel(text);
-        saveToCache(group, text, satellites.length);
+        await saveToCache(group, text, satellites.length);
         clearRateLimit();
         return { satellites, source: 'mirror' };
       }
@@ -452,11 +395,11 @@ export async function fetchTLEData(
     const text = await resp.text();
     clearRateLimit();
     const satellites = await parseSatelliteDataParallel(text);
-    saveToCache(group, text, satellites.length);
+    await saveToCache(group, text, satellites.length);
     return { satellites, source: 'network' };
   } catch (e) {
     // On failure, try stale cache (ignore age)
-    const stale = loadFromCache(group, true);
+    const stale = await loadFromCache(group, true);
     if (stale) {
       onStatus?.('Unavailable, using cached data');
       console.warn(`Fetch failed, using stale cache for "${group}"`);

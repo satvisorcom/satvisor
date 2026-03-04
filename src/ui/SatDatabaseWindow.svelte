@@ -16,6 +16,7 @@
     type SatnogsSearchEntry,
   } from '../data/satnogs';
   import { cachedTleHasNorad, cachedTleSatCount } from '../data/tle-loader';
+  import { untrack } from 'svelte';
   import { formatFreqHz } from '../format';
   import { FREQ_PRESETS } from '../data/freq-presets';
 
@@ -147,30 +148,42 @@
   });
 
   // Find disabled TLE sources that have this satellite cached
-  let availableSources = $derived.by(() => {
-    if (!selectedId || isInTle) return [];
-    const results: { id: string; name: string; satCount: number }[] = [];
-    for (const src of sourcesStore.sources) {
-      if (sourcesStore.enabledIds.has(src.id)) continue;
-      let cacheKey: string;
-      let isJson = true;
-      if (src.type === 'celestrak' && src.group) {
-        cacheKey = 'tlescope_tle_' + src.group;
-      } else if (src.type === 'url') {
-        cacheKey = 'tlescope_tle_custom_' + src.id;
-      } else if (src.type === 'text') {
-        cacheKey = 'satvisor_source_text_' + src.id;
-        isJson = false;
-      } else {
-        continue;
-      }
-      if (cachedTleHasNorad(cacheKey, selectedId, isJson)) {
-        const count = cachedTleSatCount(cacheKey, isJson);
-        results.push({ id: src.id, name: src.name, satCount: count });
-      }
-    }
-    results.sort((a, b) => a.satCount - b.satCount);
-    return results;
+  let availableSources = $state<{ id: string; name: string; satCount: number }[]>([]);
+  let sourceSearchGen = 0;
+  $effect(() => {
+    const id = selectedId;
+    const inTle = isInTle;
+    const sources = sourcesStore.sources;
+    const enabled = sourcesStore.enabledIds;
+    // Run async search outside reactive tracking
+    untrack(() => {
+      const gen = ++sourceSearchGen;
+      if (!id || inTle) { availableSources = []; return; }
+      (async () => {
+        const results: { id: string; name: string; satCount: number }[] = [];
+        for (const src of sources) {
+          if (gen !== sourceSearchGen) return; // superseded
+          if (enabled.has(src.id)) continue;
+          let cacheKey: string;
+          if (src.type === 'celestrak' && src.group) {
+            cacheKey = 'tlescope_tle_' + src.group;
+          } else if (src.type === 'url') {
+            cacheKey = 'tlescope_tle_custom_' + src.id;
+          } else if (src.type === 'text') {
+            cacheKey = 'satvisor_source_text_' + src.id;
+          } else {
+            continue;
+          }
+          if (await cachedTleHasNorad(cacheKey, id)) {
+            const count = await cachedTleSatCount(cacheKey);
+            results.push({ id: src.id, name: src.name, satCount: count });
+          }
+        }
+        if (gen !== sourceSearchGen) return; // superseded
+        results.sort((a, b) => a.satCount - b.satCount);
+        availableSources = results;
+      })();
+    });
   });
 
   function enableSource(sourceId: string) {
