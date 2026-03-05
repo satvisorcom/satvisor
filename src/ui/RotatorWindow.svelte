@@ -26,7 +26,7 @@
 
   // Sweep line animation — phosphor sim runs at fixed tick rate
   // All original values (0.014 sweep, 0.028 decay) were tuned at 240fps
-  const PHOSPHOR_HZ = 240;
+  const PHOSPHOR_HZ = 200;
   const PHOSPHOR_TICK = 1 / PHOSPHOR_HZ;
   const PHOSPHOR_MAX_TICKS = Math.ceil(PHOSPHOR_HZ / 15);
   const SWEEP_PER_TICK = 0.014 * (240 / PHOSPHOR_HZ);
