@@ -42,7 +42,7 @@ class RotatorStore {
   mode = $state<RotatorMode>('serial');
   serialProtocol = $state<SerialProtocol>('gs232');
   baudRate = $state(9600);
-  wsUrl = $state('ws://localhost:4534');
+  wsUrl = $state('ws://localhost:4540');
   updateIntervalMs = $state(2000);
   tolerance = $state(3.0);
   parkPreset = $state<ParkPreset>('north');

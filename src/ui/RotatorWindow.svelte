@@ -1056,10 +1056,10 @@
                 <code>cargo install websocat</code>
               </li>
               <li>Run the bridge:<br>
-                <code>websockify 4534 localhost:4533</code><br>
-                <code>websocat --binary ws-l:0.0.0.0:4534 tcp:127.0.0.1:4533</code>
+                <code>websockify 4540 localhost:4533</code><br>
+                <code>websocat --binary ws-l:0.0.0.0:4540 tcp:127.0.0.1:4533</code>
               </li>
-              <li>Enter <code>ws://localhost:4534</code> as the URL above</li>
+              <li>Enter <code>ws://localhost:4540</code> as the URL above</li>
               <li>Switch to the Radar tab and click Connect</li>
             </ol>
           {/if}

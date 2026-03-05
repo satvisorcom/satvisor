@@ -46,10 +46,10 @@ The project includes a WebSocket rotator simulator that speaks rotctld protocol 
 ```bash
 npm run rotator-sim
 # or with a custom port:
-node scripts/rotator-sim.mjs 4534
+node scripts/rotator-sim.mjs 4540
 ```
 
-Connect in the app: Setup tab → Network mode → `ws://localhost:4534` (or `4533` for default).
+Connect in the app: Setup tab → Network mode → `ws://localhost:4540` (or `4533` for default).
 
 ### rotctld dummy rotator
 
@@ -60,9 +60,9 @@ Use Hamlib's `rotctld` with the dummy backend for a more realistic test (support
 rotctld -m 1 -vvvvv -t 1234 -C min_el=5
 
 # Terminal 2: bridge WebSocket to TCP (pick one)
-websocat --binary ws-l:127.0.0.1:4534 tcp:127.0.0.1:1234
+websocat --binary ws-l:127.0.0.1:4540 tcp:127.0.0.1:1234
 # or
-websockify 4534 localhost:1234
+websockify 4540 localhost:1234
 ```
 
 Install a bridge if needed:
@@ -72,7 +72,7 @@ cargo install websocat     # single Rust binary
 pip install websockify     # Python
 ```
 
-Connect in the app: Setup tab → Network mode → `ws://localhost:4534`.
+Connect in the app: Setup tab → Network mode → `ws://localhost:4540`.
 
 Verify rotctld is responding:
 ```bash
@@ -86,7 +86,7 @@ SSH port-forward rotctld from a remote host, then bridge locally:
 
 ```bash
 ssh user@rotator-host -L 4533:localhost:4533 -N &
-websocat --binary ws-l:127.0.0.1:4534 tcp:127.0.0.1:4533
+websocat --binary ws-l:127.0.0.1:4540 tcp:127.0.0.1:4533
 ```
 
 ## Desktop Builds (Tauri)

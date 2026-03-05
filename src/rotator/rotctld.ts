@@ -27,7 +27,7 @@ export class RotctldDriver implements RotatorDriver {
   }
 
   async connect(options: RotatorConnectOptions): Promise<void> {
-    const url = options.wsUrl ?? 'ws://localhost:4534';
+    const url = options.wsUrl ?? 'ws://localhost:4540';
     return new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url, ['binary']);
       ws.binaryType = 'arraybuffer';
