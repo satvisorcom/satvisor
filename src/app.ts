@@ -728,9 +728,11 @@ export class App {
 
     // --- Load persisted settings from localStorage ---
     themeStore.load();
+    this.skyGridRenderer.refreshColors();
     themeStore.onThemeChange = () => {
       if (!uiStore.showSkybox) this.scene3d.background = new THREE.Color(palette.bg);
       this.scene2d.background = new THREE.Color(palette.bg);
+      this.skyGridRenderer.refreshColors();
     };
     settingsStore.load();
     uiStore.loadToggles();

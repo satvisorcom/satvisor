@@ -19,6 +19,7 @@ const AZ_LABEL_ANGLES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
  */
 export class SkyGridRenderer {
   private group = new THREE.Group();
+  private lineMat: THREE.LineBasicMaterial;
 
   // Elevation rings
   private ringAttrs: THREE.BufferAttribute[] = [];
@@ -42,7 +43,7 @@ export class SkyGridRenderer {
 
   constructor(scene: THREE.Scene, private overlay: HTMLElement) {
     const gridColor = parseRgba(palette.skyGrid);
-    const lineMat = new THREE.LineBasicMaterial({
+    this.lineMat = new THREE.LineBasicMaterial({
       color: new THREE.Color(gridColor.r, gridColor.g, gridColor.b),
       transparent: true,
       opacity: gridColor.a,
@@ -56,7 +57,7 @@ export class SkyGridRenderer {
       attr.setUsage(THREE.DynamicDrawUsage);
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', attr);
-      const ring = new THREE.LineLoop(geo, lineMat);
+      const ring = new THREE.LineLoop(geo, this.lineMat);
       ring.frustumCulled = false;
       ring.renderOrder = 900;
       this.group.add(ring);
@@ -70,7 +71,7 @@ export class SkyGridRenderer {
     this.azPosAttr.setUsage(THREE.DynamicDrawUsage);
     const azGeo = new THREE.BufferGeometry();
     azGeo.setAttribute('position', this.azPosAttr);
-    const azLines = new THREE.LineSegments(azGeo, lineMat);
+    const azLines = new THREE.LineSegments(azGeo, this.lineMat);
     azLines.frustumCulled = false;
     azLines.renderOrder = 900;
     this.group.add(azLines);
@@ -261,6 +262,14 @@ export class SkyGridRenderer {
       this.labelEls[i].style.left = `${sx}px`;
       this.labelEls[i].style.top = `${sy}px`;
     }
+  }
+
+  /** Re-read grid line color from palette (call after theme load/change). */
+  refreshColors() {
+    const c = parseRgba(palette.skyGrid);
+    this.lineMat.color.setRGB(c.r, c.g, c.b);
+    this.lineMat.opacity = c.a;
+    this.lineMat.needsUpdate = true;
   }
 
   setVisible(v: boolean) {
