@@ -24,10 +24,18 @@
   import { palette, parseRgba } from './shared/theme';
   import { initHiDPICanvas } from './shared/canvas';
 
+  // Sweep line animation — phosphor sim runs at fixed tick rate
+  // All original values (0.014 sweep, 0.028 decay) were tuned at 240fps
+  const PHOSPHOR_HZ = 240;
+  const PHOSPHOR_TICK = 1 / PHOSPHOR_HZ;
+  const PHOSPHOR_MAX_TICKS = Math.ceil(PHOSPHOR_HZ / 15);
+  const SWEEP_PER_TICK = 0.014 * (240 / PHOSPHOR_HZ);
+  const DECAY_ALPHA = 1 - Math.pow(1 - 0.028, 240 / PHOSPHOR_HZ);
+
   // ── CRT phosphor palette (derived from theme radar colors) ──
   // Rebuilt when CRT canvases init or theme changes; avoids per-frame parsing
   let crt = {
-    decayFill: 'rgba(5,10,5,0.028)',
+    decayFill: `rgba(5,10,5,${DECAY_ALPHA})`,
     sweepLine: 'rgba(60,200,60,0.2)',
     sweepTrail: 'rgba(50,180,50,0.07)',
     flashSelected: 'rgba(200,255,200,0.95)',
@@ -60,7 +68,7 @@
     const hg = Math.min(255, bg_ + Math.round((255 - bg_) * 0.6));
     const hb = Math.min(255, bb + Math.round((255 - bb) * 0.6));
     crt = {
-      decayFill: `rgba(${bgr},${bgg},${bgb},0.028)`,
+      decayFill: `rgba(${bgr},${bgg},${bgb},${DECAY_ALPHA})`,
       sweepLine: `rgba(${br},${bg_},${bb},0.2)`,
       sweepTrail: `rgba(${br},${bg_},${bb},0.07)`,
       flashSelected: `rgba(${hr},${hg},${hb},0.95)`,
@@ -114,8 +122,9 @@
   let ctx: CanvasRenderingContext2D | null = null;
   let animFrameId = 0;
 
-  // Sweep line animation
   let sweepAngle = 0;
+  let lastFrameTime = 0;
+  let phosphorAccum = 0;
 
   // Info bar state (HTML overlay)
   let infoCount = $state(0);
@@ -334,8 +343,10 @@
     if (zoom <= 1.01) { panX = 0; panY = 0; zoom = 1; }
   }
 
-  function drawFrame() {
+  function drawFrame(now: number) {
     if (!ctx || !canvasEl) { animFrameId = requestAnimationFrame(drawFrame); return; }
+    const dt = lastFrameTime ? (now - lastFrameTime) / 1000 : 0;
+    lastFrameTime = now;
 
     const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
@@ -374,70 +385,80 @@
     const count = uiStore.radarBlipCount;
     const bAz = beamStore.aimAz, bEl = beamStore.aimEl, bW = beamStore.beamWidth;
 
-    // ═══ VFX: phosphor buffer approach ═══
+    // ═══ VFX: phosphor buffer approach (fixed 60Hz tick) ═══
     if (vfx && phosphorCtx && phosphorCanvas) {
       const pc = phosphorCtx;
 
-      // Advance sweep
-      sweepAngle += 0.014;
-      if (sweepAngle > TWO_PI) sweepAngle -= TWO_PI;
+      // Run phosphor simulation at fixed 60Hz — accumulate real time, consume in ticks
+      phosphorAccum += dt;
+      const maxTicks = PHOSPHOR_MAX_TICKS;
+      let ticks = Math.floor(phosphorAccum / PHOSPHOR_TICK);
+      if (ticks > maxTicks) ticks = maxTicks;
+      phosphorAccum -= ticks * PHOSPHOR_TICK;
 
-      // Fade the phosphor buffer — this creates the persistence decay
-      pc.fillStyle = crt.decayFill;
-      pc.fillRect(0, 0, SIZE, SIZE);
+      for (let t = 0; t < ticks; t++) {
+        // Advance sweep
+        // Advance sweep
+        sweepAngle += SWEEP_PER_TICK;
+        if (sweepAngle > TWO_PI) sweepAngle -= TWO_PI;
 
-      // Draw bright sweep line onto phosphor
-      const edgeA = sweepAngle - Math.PI / 2;
-      const sx = CX + sweepLen * Math.cos(edgeA);
-      const sy = CY + sweepLen * Math.sin(edgeA);
-      pc.strokeStyle = crt.sweepLine;
-      pc.lineWidth = 1.5;
-      pc.beginPath();
-      pc.moveTo(CX, CY);
-      pc.lineTo(sx, sy);
-      pc.stroke();
-      // Dimmer trailing line
-      const trailA = sweepAngle - 0.04 - Math.PI / 2;
-      pc.strokeStyle = crt.sweepTrail;
-      pc.lineWidth = 1;
-      pc.beginPath();
-      pc.moveTo(CX, CY);
-      pc.lineTo(CX + sweepLen * Math.cos(trailA), CY + sweepLen * Math.sin(trailA));
-      pc.stroke();
+        // Fade the phosphor buffer — this creates the persistence decay
+        pc.fillStyle = crt.decayFill;
+        pc.fillRect(0, 0, SIZE, SIZE);
 
-      // Draw blips onto phosphor ONLY when sweep passes them
-      for (let i = 0; i < count; i++) {
-        const off = i * 4;
-        const az = blips[off];
-        const el = blips[off + 1];
-        const flags = blips[off + 3];
-        const isSelected = (flags & 1) !== 0;
-        const inBeam = isInsideBeam(az, el, bAz, bEl, bW);
+        // Draw bright sweep line onto phosphor
+        const edgeA = sweepAngle - Math.PI / 2;
+        const sx = CX + sweepLen * Math.cos(edgeA);
+        const sy = CY + sweepLen * Math.sin(edgeA);
+        pc.strokeStyle = crt.sweepLine;
+        pc.lineWidth = 1.5;
+        pc.beginPath();
+        pc.moveTo(CX, CY);
+        pc.lineTo(sx, sy);
+        pc.stroke();
+        // Dimmer trailing line
+        const trailA = sweepAngle - 0.04 - Math.PI / 2;
+        pc.strokeStyle = crt.sweepTrail;
+        pc.lineWidth = 1;
+        pc.beginPath();
+        pc.moveTo(CX, CY);
+        pc.lineTo(CX + sweepLen * Math.cos(trailA), CY + sweepLen * Math.sin(trailA));
+        pc.stroke();
 
-        // How far behind the sweep is this blip?
-        const blipAngle = az * Math.PI / 180 - headingRad;
-        const angDist = ((sweepAngle - blipAngle) % TWO_PI + TWO_PI) % TWO_PI;
-        // Only paint when sweep is within ~3° of the blip
-        if (angDist < 0.06 || angDist > TWO_PI - 0.02) {
-          const r = R_MAX * (90 - Math.max(0, el)) / 90;
-          const bx = r * Math.sin(blipAngle) + CX;
-          const by = -r * Math.cos(blipAngle) + CY;
-          const radius = isSelected ? 4 : inBeam ? 3 : 2.5;
+        // Draw blips onto phosphor ONLY when sweep passes them
+        for (let i = 0; i < count; i++) {
+          const off = i * 4;
+          const az = blips[off];
+          const el = blips[off + 1];
+          const flags = blips[off + 3];
+          const isSelected = (flags & 1) !== 0;
+          const inBeam = isInsideBeam(az, el, bAz, bEl, bW);
 
-          // Bright white-green flash
-          pc.fillStyle = isSelected ? crt.flashSelected
-                       : inBeam    ? crt.flashBeam
-                       :             crt.flashNormal;
-          pc.beginPath();
-          pc.arc(bx, by, radius, 0, TWO_PI);
-          pc.fill();
+          // How far behind the sweep is this blip?
+          const blipAngle = az * Math.PI / 180 - headingRad;
+          const angDist = ((sweepAngle - blipAngle) % TWO_PI + TWO_PI) % TWO_PI;
+          // Only paint when sweep is within ~3° of the blip
+          if (angDist < 0.06 || angDist > TWO_PI - 0.02) {
+            const r = R_MAX * (90 - Math.max(0, el)) / 90;
+            const bx = r * Math.sin(blipAngle) + CX;
+            const by = -r * Math.cos(blipAngle) + CY;
+            const radius = isSelected ? 4 : inBeam ? 3 : 2.5;
 
-          // Bloom glow
-          if (isSelected || inBeam) {
-            pc.fillStyle = isSelected ? crt.bloomBright : crt.bloomDim;
+            // Bright white-green flash
+            pc.fillStyle = isSelected ? crt.flashSelected
+                         : inBeam    ? crt.flashBeam
+                         :             crt.flashNormal;
             pc.beginPath();
-            pc.arc(bx, by, radius + 4, 0, TWO_PI);
+            pc.arc(bx, by, radius, 0, TWO_PI);
             pc.fill();
+
+            // Bloom glow
+            if (isSelected || inBeam) {
+              pc.fillStyle = isSelected ? crt.bloomBright : crt.bloomDim;
+              pc.beginPath();
+              pc.arc(bx, by, radius + 4, 0, TWO_PI);
+              pc.fill();
+            }
           }
         }
       }
