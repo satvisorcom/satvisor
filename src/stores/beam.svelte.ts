@@ -41,7 +41,7 @@ class BeamStore {
   // Beam aim direction
   aimAz = $state(0);
   aimEl = $state(45);
-  beamWidth = $state(3);
+  beamWidth = $state(20);
 
   // Lock-to-selected tracking
   locked = $state(false);

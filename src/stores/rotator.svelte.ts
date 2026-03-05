@@ -17,6 +17,20 @@ export type ParkPreset = 'north' | 'south' | 'zenith' | 'custom';
 
 export type PassEndAction = 'nothing' | 'park' | 'slew-next';
 
+export interface AntennaPreset {
+  label: string;
+  beamWidth: number;
+  tolerance: number;
+  updateMs: number;
+}
+
+export const ANTENNA_PRESETS: Record<string, AntennaPreset> = {
+  vhf:  { label: 'VHF Yagi',   beamWidth: 30, tolerance: 5,   updateMs: 5000 },
+  dual: { label: 'Dual-band',  beamWidth: 20, tolerance: 3,   updateMs: 2000 },
+  uhf:  { label: 'UHF Yagi',   beamWidth: 18, tolerance: 2,   updateMs: 2000 },
+  dish: { label: 'Dish',       beamWidth: 5,  tolerance: 1,   updateMs: 500 },
+};
+
 export const PARK_PRESETS: Record<Exclude<ParkPreset, 'custom'>, { label: string; az: number; el: number }> = {
   north:  { label: 'North / Horizon', az: 0, el: 0 },
   south:  { label: 'South / Horizon', az: 180, el: 0 },
@@ -29,8 +43,8 @@ class RotatorStore {
   serialProtocol = $state<SerialProtocol>('gs232');
   baudRate = $state(9600);
   wsUrl = $state('ws://localhost:4534');
-  updateIntervalMs = $state(500);
-  tolerance = $state(0.5);
+  updateIntervalMs = $state(2000);
+  tolerance = $state(3.0);
   parkPreset = $state<ParkPreset>('north');
   parkAz = $state(0);
   parkEl = $state(0);
@@ -472,7 +486,7 @@ class RotatorStore {
   }
 
   setUpdateInterval(ms: number): void {
-    this.updateIntervalMs = Math.max(100, Math.min(5000, ms));
+    this.updateIntervalMs = Math.max(100, Math.min(20000, ms));
     this.save('update_interval', this.updateIntervalMs);
     if (this.driver?.connected) {
       this.stopTimers();
@@ -511,7 +525,7 @@ class RotatorStore {
   }
 
   setTolerance(deg: number): void {
-    this.tolerance = Math.max(0, Math.min(5, deg));
+    this.tolerance = Math.max(0, Math.min(10, deg));
     this.save('tolerance', this.tolerance);
   }
 }

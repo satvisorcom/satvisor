@@ -7,7 +7,7 @@
   import InfoTip from './shared/InfoTip.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { beamStore, isInsideBeam } from '../stores/beam.svelte';
-  import { rotatorStore, PARK_PRESETS, type ParkPreset, type PassEndAction } from '../stores/rotator.svelte';
+  import { rotatorStore, PARK_PRESETS, ANTENNA_PRESETS, type ParkPreset, type PassEndAction } from '../stores/rotator.svelte';
   import { timeStore } from '../stores/time.svelte';
   import { satColorRgba } from '../constants';
   import { ViewMode } from '../types';
@@ -88,6 +88,22 @@
   let tab = $state<'radar' | 'setup'>('radar');
   let rateDisplay = $derived(`${(rotatorStore.updateIntervalMs / 1000).toFixed(1)}s`);
   let tolDisplay = $derived(`${rotatorStore.tolerance.toFixed(1)}°`);
+
+  let activeAntennaPreset = $derived.by(() => {
+    for (const [key, p] of Object.entries(ANTENNA_PRESETS)) {
+      if (beamStore.beamWidth === p.beamWidth && rotatorStore.tolerance === p.tolerance && rotatorStore.updateIntervalMs === p.updateMs)
+        return key;
+    }
+    return null;
+  });
+
+  function applyAntennaPreset(key: string) {
+    const p = ANTENNA_PRESETS[key];
+    if (!p) return;
+    beamStore.setBeamWidth(p.beamWidth);
+    rotatorStore.setTolerance(p.tolerance);
+    rotatorStore.setUpdateInterval(p.updateMs);
+  }
 
   // In sky view, rotate the radar so the viewer's look direction is at the top
   let headingRad = $derived(uiStore.viewMode === ViewMode.VIEW_SKY ? uiStore.skyHeading : 0);
@@ -880,6 +896,21 @@
 
   {:else}
     <div class="setup-panel">
+      <h4 class="section-header">Antenna</h4>
+      <div class="rot-row">
+        <label>Preset<InfoTip>Sets beam width, tolerance, and update rate for common antenna types.</InfoTip></label>
+        <div class="antenna-presets">
+          {#each Object.entries(ANTENNA_PRESETS) as [key, p]}
+            <Button size="xs" active={activeAntennaPreset === key} onclick={() => applyAntennaPreset(key)}>{p.label}</Button>
+          {/each}
+        </div>
+      </div>
+      <div class="rot-row antenna-summary">
+        <span>Beam {beamStore.beamWidth}°</span>
+        <span>Tolerance {rotatorStore.tolerance}°</span>
+        <span>Rate {rateDisplay}</span>
+      </div>
+
       <h4 class="section-header">Connection</h4>
       <div class="rot-row">
         <label>Mode</label>
@@ -922,12 +953,12 @@
       {/if}
 
       <Slider label="Update rate" display={rateDisplay}
-        min={100} max={5000} step={100} value={rotatorStore.updateIntervalMs}
+        min={100} max={20000} step={100} value={rotatorStore.updateIntervalMs}
         oninput={(e) => rotatorStore.setUpdateInterval(Number((e.target as HTMLInputElement).value))} />
 
       {#snippet tolTip()}<InfoTip>Minimum error before sending a new position command. Reduces wear on the rotator gears. Set to 0 for continuous tracking.</InfoTip>{/snippet}
       <Slider label="Tolerance" display={tolDisplay} tip={tolTip}
-        min={0} max={5} step={0.1} value={rotatorStore.tolerance}
+        min={0} max={10} step={0.5} value={rotatorStore.tolerance}
         oninput={(e) => rotatorStore.setTolerance(Number((e.target as HTMLInputElement).value))} />
 
       <div class="rot-row">
@@ -1250,6 +1281,19 @@
   .rot-btns {
     display: flex;
     gap: 4px;
+  }
+
+  /* ── Antenna presets ── */
+  .antenna-presets {
+    display: flex;
+    gap: 2px;
+  }
+  .antenna-summary {
+    gap: 10px;
+    justify-content: flex-start;
+    font-size: 9px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   /* ── Setup tab ── */
