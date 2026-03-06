@@ -6,8 +6,8 @@
   import Input from './shared/Input.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { sourcesStore, type TLESourceConfig, type SourceType } from '../stores/sources.svelte';
-  // getCacheAge is now async (IndexedDB) — we use loadState.cacheAge instead
   import { ICON_DATA_SOURCES, ICON_DOWNLOAD, ICON_EDIT, ICON_CLOSE } from './shared/icons';
+  import { tooltip } from './shared/tooltip';
   import VirtualList from './shared/VirtualList.svelte';
   import { textToRecords, ommToJson, type DataFormat } from '../data/omm-formats';
 
@@ -153,12 +153,29 @@
     return `${days}d`;
   }
 
-  function getCacheInfo(src: { id: string; group?: string; type: string }): string | null {
+  function epochRow(label: string, ms: number): string {
+    return `  ${label}  <span class="val">${formatAge(ms)}</span>`;
+  }
+
+  function getEpochAgeInfo(src: { id: string }): { label: string; tooltip: string } | null {
     const state = sourcesStore.loadStates.get(src.id);
-    if (state?.status === 'loaded' && state.cacheAge != null) {
-      return formatAge(state.cacheAge);
+    if (state?.status !== 'loaded' || !state.epochAge) return null;
+    const ea = state.epochAge;
+    const label = formatAge(ea.avgMs);
+    const lines = [
+      `<b>Epoch age</b> <span class="dim">(TLE freshness)</span>`,
+      epochRow('Newest ', ea.newestMs),
+      epochRow('P25    ', ea.p25Ms),
+      epochRow('Median ', ea.p50Ms),
+      epochRow('Average', ea.avgMs),
+      epochRow('P75    ', ea.p75Ms),
+      epochRow('Oldest ', ea.oldestMs),
+    ];
+    let html = lines.join('\n');
+    if (state.cacheAge != null) {
+      html += `<div class="sep"></div>Fetched <span class="val">${formatAge(state.cacheAge)}</span> ago`;
     }
-    return null;
+    return { label, tooltip: html };
   }
 
   function openPasteModal() {
@@ -266,7 +283,7 @@
       <div class="section-header">CelesTrak{#if filterQuery} <span class="filter-count">({filteredBuiltins.length})</span>{/if}</div>
       <div class="source-list">
         {#each filteredBuiltins as src}
-          {@const cached = getCacheInfo(src)}
+          {@const epochInfo = getEpochAgeInfo(src)}
           {@const enabled = sourcesStore.enabledIds.has(src.id)}
           <label class="source-row">
             <Checkbox size="sm"
@@ -276,8 +293,8 @@
             {#if enabled}
               <span class="source-count">{getStatus(src.id)}</span>
             {/if}
-            {#if cached}
-              <span class="cache-age" title="Cached {cached} ago">{cached}</span>
+            {#if epochInfo}
+              <span class="epoch-age" use:tooltip={{ html: epochInfo.tooltip }}>{epochInfo.label}</span>
             {/if}
             {#if hasCachedData(src)}
               <button class="action-btn" title="Download" onclick={(e) => { e.preventDefault(); downloadSource(src); }}>{@html ICON_DOWNLOAD}</button>
@@ -293,6 +310,7 @@
       {#if customSources.length > 0}
         <div class="source-list custom-list">
           {#each customSources as src}
+            {@const epochInfo = getEpochAgeInfo(src)}
             <label class="source-row">
               <Checkbox size="sm"
                 checked={sourcesStore.enabledIds.has(src.id)}
@@ -300,6 +318,9 @@
               <span class="source-name">{src.name}</span>
               {#if sourcesStore.enabledIds.has(src.id)}
                 <span class="source-count">{getStatus(src.id)}</span>
+              {/if}
+              {#if epochInfo}
+                <span class="epoch-age" use:tooltip={{ html: epochInfo.tooltip }}>{epochInfo.label}</span>
               {/if}
               {#if hasCachedData(src)}
                 <button class="action-btn" title="Download" onclick={(e) => { e.preventDefault(); downloadSource(src); }}>{@html ICON_DOWNLOAD}</button>
@@ -488,10 +509,12 @@
     color: var(--text-ghost);
     flex-shrink: 0;
   }
-  .cache-age {
+  .epoch-age {
     font-size: 10px;
     color: var(--text-faint);
     flex-shrink: 0;
+    white-space: pre-line;
+    cursor: default;
   }
   .action-btn {
     background: none;

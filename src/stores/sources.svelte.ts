@@ -12,10 +12,20 @@ export interface TLESourceConfig {
   builtin: boolean; // true = CelesTrak, can't delete
 }
 
+export interface EpochAgeStats {
+  avgMs: number;       // average epoch age in ms
+  oldestMs: number;    // oldest (max age) epoch in ms
+  newestMs: number;    // newest (min age) epoch in ms
+  p25Ms: number;       // 25th percentile
+  p50Ms: number;       // median
+  p75Ms: number;       // 75th percentile
+}
+
 export interface SourceLoadState {
   satCount: number;
   status: 'idle' | 'loading' | 'loaded' | 'error';
   cacheAge?: number;
+  epochAge?: EpochAgeStats;
   error?: string;
 }
 

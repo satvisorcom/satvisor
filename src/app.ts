@@ -31,7 +31,7 @@ import { fetchTLEData, parseSatelliteDataParallel, warmupTLEWorkers, evictExpire
 import { cachePut, cleanupLocalStorage } from './data/cache-db';
 import { getSatellitesByFreqRange } from './data/satnogs';
 import { loadStdmag, loadSatnogs, applyStdmag, onStdmagRefresh } from './data/catalog';
-import { sourcesStore, type TLESourceConfig } from './stores/sources.svelte';
+import { sourcesStore, type TLESourceConfig, type EpochAgeStats } from './stores/sources.svelte';
 import { timeStore } from './stores/time.svelte';
 import { uiStore } from './stores/ui.svelte';
 import { beamStore } from './stores/beam.svelte';
@@ -567,6 +567,23 @@ export class App {
     this.mergeAndApply(enabledIdSet);
   }
 
+  private computeEpochAge(satellites: Satellite[]): EpochAgeStats | undefined {
+    if (satellites.length === 0) return undefined;
+    const nowUnix = Date.now() / 1000;
+    const ages = satellites.map(s => (nowUnix - epochToUnix(s.epochDays)) * 1000);
+    ages.sort((a, b) => a - b);
+    const sum = ages.reduce((a, b) => a + b, 0);
+    const p = (frac: number) => ages[Math.min(Math.floor(frac * ages.length), ages.length - 1)];
+    return {
+      avgMs: sum / ages.length,
+      newestMs: ages[0],
+      oldestMs: ages[ages.length - 1],
+      p25Ms: p(0.25),
+      p50Ms: p(0.5),
+      p75Ms: p(0.75),
+    };
+  }
+
   private async fetchSource(src: TLESourceConfig) {
     sourcesStore.setLoadState(src.id, { satCount: 0, status: 'loading' });
     try {
@@ -575,7 +592,7 @@ export class App {
         const result = await fetchTLEData(src.group!);
         satellites = result.satellites;
         const age = result.cacheAge;
-        sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded', cacheAge: age });
+        sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded', cacheAge: age, epochAge: this.computeEpochAge(satellites) });
       } else if (src.type === 'url') {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
@@ -585,11 +602,11 @@ export class App {
         const text = await resp.text();
         satellites = await parseSatelliteDataParallel(text);
         await cachePut('tlescope_tle_custom_' + src.id, { ts: Date.now(), data: text, count: satellites.length });
-        sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded' });
+        sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded', epochAge: this.computeEpochAge(satellites) });
       } else {
         const text = await sourcesStore.getCustomText(src.id);
         satellites = await parseSatelliteDataParallel(text);
-        sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded' });
+        sourcesStore.setLoadState(src.id, { satCount: satellites.length, status: 'loaded', epochAge: this.computeEpochAge(satellites) });
       }
       this.sourceData.set(src.id, satellites);
     } catch (e) {
