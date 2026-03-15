@@ -52,6 +52,15 @@ export default defineConfig({
     host: host || false,
     watch: { ignored: ['**/src-tauri/**'] },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+        },
+      },
+    },
+  },
   plugins: [
     {
       name: 'html-texture-quality',
@@ -79,6 +88,8 @@ export default defineConfig({
         ]
       },
       workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ['**/*.{js,css,png,jpg,ttf,json}'],
         globIgnores: [
           '**/textures/icons/**',
@@ -101,7 +112,7 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'pages-cache',
-              networkTimeoutSeconds: 3,
+              networkTimeoutSeconds: 1,
             }
           },
           {
