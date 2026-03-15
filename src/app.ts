@@ -408,7 +408,7 @@ export class App {
     this.setLoading(0.5, 'Building scene...');
 
     // Earth
-    this.earth = new Earth(dayTex, nightTex, earthNormal ?? null, earthDisp ?? null);
+    this.earth = new Earth(dayTex, nightTex, earthNormal ?? null, earthDisp ?? null, cloudTex);
     this.scene3d.add(this.earth.mesh);
 
     // Sky-view ground disc: flat plane with projected Earth texture for realistic ground
@@ -1611,7 +1611,8 @@ export class App {
     if (this.viewMode === ViewMode.VIEW_3D || isSkyView) {
       // Update 3D scene (sky view shares the 3D scene but hides ground objects)
       if (!this.orreryCtrl.isOrreryMode && !isSkyView) {
-        this.earth.update(epoch, gmstDeg, this.cfg.earthRotationOffset, this.cfg.showNightLights);
+        this.earth.update(epoch, gmstDeg, this.cfg.earthRotationOffset, this.cfg.showNightLights, this.cfg.showClouds, this.camera3d.position);
+        this.earth.setShowGlare(this.bloomEnabled);
         if (earthMode) this.cloudLayer.update(epoch, gmstDeg, this.cfg.earthRotationOffset, this.cfg.showClouds, this.cfg.showNightLights);
       }
       // Moon + sun update in both orbital and sky view

@@ -3,6 +3,7 @@ uniform float displacementScale;
 uniform float hasDisplacement;
 
 varying vec2 vUv;
+varying vec3 vWorldPos;
 
 void main() {
     vUv = uv;
@@ -13,5 +14,6 @@ void main() {
         pos += normal * height * displacementScale;
     }
 
+    vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }

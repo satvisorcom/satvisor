@@ -2,6 +2,7 @@ uniform sampler2D dayTexture;
 uniform sampler2D nightTexture;
 uniform sampler2D normalMap;
 uniform sampler2D displacementMap;
+uniform sampler2D cloudTexture;
 uniform vec3 sunDir;
 uniform vec3 moonPos;
 uniform float moonRadius;
@@ -10,8 +11,13 @@ uniform float nightEmission;
 uniform float hasNormalMap;
 uniform float aoEnabled;
 uniform float hasDisplacement;
+uniform vec3 viewPos;
+uniform float cloudUVOffset;
+uniform float showClouds;
+uniform float showGlare;
 
 varying vec2 vUv;
+varying vec3 vWorldPos;
 
 const float PI = 3.14159265359;
 const float TWO_PI = 6.28318530718;
@@ -19,6 +25,7 @@ const float TEX_STEP = 1.0 / 2048.0;
 const float AO_STRENGTH = 8.0;
 const float EARTH_R = 6371.0;
 const float SUN_ANG_R = 0.00465;
+const float CLOUD_ALT = 25.0;
 
 void main() {
     vec4 day = texture2D(dayTexture, vUv);
@@ -87,6 +94,70 @@ void main() {
     vec3 hazeColor = mix(vec3(0.15, 0.35, 0.75), sunsetColor, scatterMult);
     float surfaceHaze = pow(max(1.0 - abs(intensity), 0.0), 2.0) * smoothstep(-0.1, 0.2, intensity) * 0.1;
     scatteredDay = mix(scatteredDay, hazeColor, surfaceHaze);
+
+    // --- Cloud shadows via ray-sphere intersection ---
+    float cloudShadow = 1.0;
+    if (showClouds > 0.5 && rawIntensity > -0.1) {
+        // Trace ray from surface point toward sun, find where it hits the cloud sphere
+        vec3 surfPos = baseNormal * EARTH_R;
+        float cloudR = EARTH_R + CLOUD_ALT;
+
+        // Solve |surfPos + t*sunDir|² = cloudR²
+        float b = 2.0 * dot(surfPos, sunDir);
+        float c = EARTH_R * EARTH_R - cloudR * cloudR;
+        float disc = b * b - 4.0 * c;
+
+        // disc is always positive (surface is inside the cloud sphere)
+        float t = (-b + sqrt(disc)) * 0.5;
+        vec3 cloudHit = surfPos + t * sunDir;
+
+        // Convert cloud intersection to equirectangular UV
+        vec3 cn = normalize(cloudHit);
+        float cloudTheta = atan(-cn.z, cn.x);
+        float cloudPhi = acos(clamp(cn.y, -1.0, 1.0));
+        vec2 cloudUV = vec2(cloudTheta / TWO_PI + 0.5, 1.0 - cloudPhi / PI);
+
+        // Apply the rotation offset between earth and cloud layer
+        cloudUV.x = fract(cloudUV.x + cloudUVOffset);
+
+        float cloudAlpha = texture2D(cloudTexture, cloudUV).a;
+
+        // Softer shadows on the day side, fade out near terminator
+        float shadowDayMask = smoothstep(-0.05, 0.25, rawIntensity);
+        float shadowStrength = showGlare > 0.5 ? 1.0 : 0.8;
+        cloudShadow = 1.0 - cloudAlpha * shadowStrength * shadowDayMask;
+        scatteredDay *= cloudShadow;
+    }
+
+    // --- Ocean specular (water glare / sun glint) ---
+    if (showGlare > 0.5 && rawIntensity > 0.0) {
+        vec3 viewDir = normalize(viewPos - baseNormal * EARTH_R);
+        vec3 halfVec = normalize(sunDir + viewDir);
+
+        float NdotV = max(dot(baseNormal, viewDir), 0.0);
+        float NdotH = max(dot(normal, halfVec), 0.0);
+        float NdotL = max(rawIntensity, 0.0);
+
+        // Fresnel (Schlick) — water F0 ≈ 0.02
+        float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
+
+        // Ocean mask: blue-dominant pixels with low green/red
+        float waterMask = clamp((day.b - max(day.r, day.g)) * 3.0, 0.0, 1.0);
+
+        // Two-lobe specular: tight sun disk + broad Fresnel rim
+        float specTight = pow(NdotH, 256.0);
+        float specBroad = pow(NdotH, 16.0);
+        float spec = specTight * 3.0 + specBroad * 0.15;
+
+        // Sun color: warm white at high angles, reddish near horizon
+        vec3 sunColor = mix(vec3(1.0, 0.7, 0.4), vec3(1.0, 0.95, 0.9), NdotL);
+
+        // Cloud shadow suppresses glare — no sun reflection under clouds
+        vec3 glare = sunColor * spec * fresnel * waterMask * NdotL * cloudShadow;
+
+        // Roughness from normal map breaks up the glare naturally
+        scatteredDay += glare;
+    }
 
     // Boost night emission for bloom (HDR values > 1.0)
     vec4 boostedNight = vec4(night.rgb * nightEmission, night.a);

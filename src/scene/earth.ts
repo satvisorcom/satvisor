@@ -8,6 +8,7 @@ import earthFragSrc from '../shaders/earth-daynight.frag.glsl?raw';
 
 const _yAxis = new THREE.Vector3(0, 1, 0);
 const _tmpSun = new THREE.Vector3();
+const _tmpView = new THREE.Vector3();
 
 export class Earth {
   mesh: THREE.Mesh;
@@ -16,7 +17,7 @@ export class Earth {
   private bumpEnabled = true;
   private aoEnabledState = true;
 
-  constructor(dayTex: THREE.Texture, nightTex: THREE.Texture, normalTex: THREE.Texture | null, displacementTex: THREE.Texture | null) {
+  constructor(dayTex: THREE.Texture, nightTex: THREE.Texture, normalTex: THREE.Texture | null, displacementTex: THREE.Texture | null, cloudTex: THREE.Texture | null) {
     const radius = EARTH_RADIUS_KM / DRAW_SCALE;
     const geometry = this.genEarthGeometry(radius, 256, 256);
 
@@ -28,6 +29,7 @@ export class Earth {
         nightTexture: { value: nightTex },
         normalMap: { value: normalTex },
         displacementMap: { value: displacementTex },
+        cloudTexture: { value: cloudTex },
         sunDir: { value: new THREE.Vector3(1, 0, 0) },
         moonPos: { value: new THREE.Vector3(0, 0, 0) },
         moonRadius: { value: MOON_RADIUS_KM },
@@ -37,6 +39,10 @@ export class Earth {
         aoEnabled: { value: 1.0 },
         displacementScale: { value: 0.007 },
         hasDisplacement: { value: displacementTex ? 1.0 : 0.0 },
+        viewPos: { value: new THREE.Vector3() },
+        cloudUVOffset: { value: 0.0 },
+        showClouds: { value: 0.0 },
+        showGlare: { value: 1.0 },
       },
       vertexShader: earthVertSrc,
       fragmentShader: earthFragSrc,
@@ -98,12 +104,13 @@ export class Earth {
     return geo;
   }
 
-  update(currentEpoch: number, gmstDeg: number, earthOffset: number, showNightLights: boolean) {
-    this.mesh.rotation.y = (gmstDeg + earthOffset) * DEG2RAD;
+  update(currentEpoch: number, gmstDeg: number, earthOffset: number, showNightLights: boolean, showClouds: boolean, cameraPosition: THREE.Vector3) {
+    const earthRotRad = (gmstDeg + earthOffset) * DEG2RAD;
+    this.mesh.rotation.y = earthRotRad;
     this.material.uniforms.showNight.value = showNightLights ? 1.0 : 0.0;
+    this.material.uniforms.showClouds.value = showClouds ? 1.0 : 0.0;
 
     const sunEci = calculateSunPosition(currentEpoch);
-    const earthRotRad = (gmstDeg + earthOffset) * DEG2RAD;
     _tmpSun.copy(sunEci).applyAxisAngle(_yAxis, -earthRotRad);
     this.material.uniforms.sunDir.value.copy(_tmpSun);
 
@@ -111,6 +118,21 @@ export class Earth {
     const moonRender = calculateMoonPosition(currentEpoch);
     moonRender.applyAxisAngle(_yAxis, -earthRotRad);
     this.material.uniforms.moonPos.value.copy(moonRender);
+
+    // View position in ECEF for specular
+    _tmpView.copy(cameraPosition).applyAxisAngle(_yAxis, -earthRotRad);
+    // Scale from draw units to km for the shader
+    _tmpView.multiplyScalar(DRAW_SCALE);
+    this.material.uniforms.viewPos.value.copy(_tmpView);
+
+    // Cloud UV offset: difference between earth and cloud rotation in UV space
+    const cloudAngle = ((gmstDeg + earthOffset + currentEpoch * 360.0 * 0.04) % 360.0) * DEG2RAD;
+    const uvOffset = (earthRotRad - cloudAngle) / (2.0 * Math.PI);
+    this.material.uniforms.cloudUVOffset.value = uvOffset;
+  }
+
+  setShowGlare(on: boolean) {
+    this.material.uniforms.showGlare.value = on ? 1.0 : 0.0;
   }
 
   setNightEmission(value: number) {
