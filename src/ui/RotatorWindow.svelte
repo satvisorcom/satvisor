@@ -724,7 +724,8 @@
     if (rotatorStore.status === 'connected' && rotatorStore.actualAz !== null && rotatorStore.actualEl !== null) {
       const { x: rx, y: ry } = azElToXY(rotatorStore.actualAz, rotatorStore.actualEl);
 
-      const s = 5;
+      const beamR = R_MAX * zoom * (bW / 2) / 90;
+      const s = Math.max(5, beamR);
       ctx.strokeStyle = palette.rotator;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
