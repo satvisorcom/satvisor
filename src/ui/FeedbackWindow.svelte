@@ -139,6 +139,10 @@
     margin-bottom: 6px;
   }
   .row label { color: var(--text-dim); font-size: 12px; }
+  @media (pointer: coarse) {
+    .row { margin-bottom: 10px; min-height: 32px; }
+    .section-header { margin: 14px 0 8px; }
+  }
   .toys-panel {
     border: 1px solid var(--border);
     border-radius: 3px;

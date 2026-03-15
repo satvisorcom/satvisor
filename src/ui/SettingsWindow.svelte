@@ -381,4 +381,10 @@
     margin: -6px 0 8px;
   }
 
+  /* Touch-friendly spacing */
+  @media (pointer: coarse) {
+    .row { margin-bottom: 10px; min-height: 32px; }
+    .section-header { margin: 14px 0 8px; }
+  }
+
 </style>

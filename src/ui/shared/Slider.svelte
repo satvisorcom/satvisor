@@ -70,4 +70,18 @@
 
   .slider:hover::-webkit-slider-thumb { background: var(--text); }
   .slider:hover::-moz-range-thumb { background: var(--text); }
+
+  /* Touch-friendly sizing */
+  @media (pointer: coarse) {
+    .slider-row { gap: 8px; margin: 8px 0 10px; }
+    .slider-xs { height: 3px; }
+    .slider-xs::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; }
+    .slider-xs::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; }
+    .slider-sm { height: 4px; }
+    .slider-sm::-webkit-slider-thumb { width: 16px; height: 16px; border-radius: 50%; }
+    .slider-sm::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; }
+    .slider-md { height: 5px; }
+    .slider-md::-webkit-slider-thumb { width: 20px; height: 20px; border-radius: 50%; }
+    .slider-md::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; }
+  }
 </style>

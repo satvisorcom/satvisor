@@ -1529,6 +1529,10 @@
   }
   .row:last-child { margin-bottom: 0; }
   .row label { color: var(--text-dim); font-size: 12px; }
+  @media (pointer: coarse) {
+    .row { margin-bottom: 10px; min-height: 32px; }
+    .section-header { margin: 14px 0 8px; }
+  }
   .unit { color: var(--text-ghost); font-size: 11px; }
   :global(.rot-url) { width: 160px; }
   .guide-details {
