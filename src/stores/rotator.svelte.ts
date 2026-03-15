@@ -1,4 +1,6 @@
 import type { RotatorDriver, RotatorMode, SerialProtocol } from '../rotator/protocol';
+import type { ConsoleLogEntry } from '../serial/console-types';
+import { MAX_LOG_ENTRIES } from '../serial/console-types';
 import type { BeamTrackingState } from './beam.svelte';
 import { beamStore } from './beam.svelte';
 import { uiStore } from './ui.svelte';
@@ -64,6 +66,9 @@ class RotatorStore {
   targetAz = $state<number | null>(null);
   targetEl = $state<number | null>(null);
 
+  // Protocol console
+  commandLog = $state<ConsoleLogEntry[]>([]);
+
   // Slewing state with hysteresis (>2° to enter, <0.5° to leave)
   isSlewing = $state(false);
   // Warning: rotator can't keep up with target
@@ -126,6 +131,20 @@ class RotatorStore {
         this.stopTimers();
         this.driver = null;
       };
+      driver.onLog = (entry: ConsoleLogEntry) => {
+        const lines = entry.text.split('\n');
+        if (lines.length <= 1) {
+          this.commandLog = [...this.commandLog.slice(-(MAX_LOG_ENTRIES - 1)), entry];
+        } else {
+          const entries = lines.filter(l => l).map((l, i) => ({
+            timestamp: entry.timestamp + i * 0.001,
+            direction: entry.direction,
+            text: l,
+            bytes: entry.bytes,
+          } satisfies ConsoleLogEntry));
+          this.commandLog = [...this.commandLog.slice(-(MAX_LOG_ENTRIES - entries.length)), ...entries];
+        }
+      };
 
       await driver.connect({
         baudRate: this.baudRate,
@@ -177,6 +196,15 @@ class RotatorStore {
     this._lastSentEl = null;
     this.nextAosEpoch = 0;
     this.nextAosSatName = '';
+  }
+
+  async sendRaw(cmd: string): Promise<void> {
+    if (!this.driver?.connected || !this.driver.sendRaw) return;
+    await this.driver.sendRaw(cmd);
+  }
+
+  clearLog(): void {
+    this.commandLog = [];
   }
 
   async goto(az: number, el: number): Promise<void> {

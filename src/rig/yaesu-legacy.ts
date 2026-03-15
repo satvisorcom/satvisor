@@ -54,6 +54,8 @@ export class YaesuLegacyDriver implements RigDriver {
 
   set onDisconnect(cb: (() => void) | null) { this.transport.onDisconnect = cb; }
   get onDisconnect() { return this.transport.onDisconnect; }
+  set onLog(cb: import('../serial/console-types').OnLogCallback | null) { this.transport.onLog = cb; }
+  get onLog() { return this.transport.onLog; }
 
   isSupported(): boolean {
     return this.transport.isSupported();
@@ -90,5 +92,10 @@ export class YaesuLegacyDriver implements RigDriver {
     // Read 1-byte ACK: 0x00 = success, 0xF0 = already active (both OK)
     const ack = await this.transport.sendAndReceiveBytes(cmd, 1, 2000);
     if (ack.length > 0 && ack[0] !== 0x00 && ack[0] !== 0xF0) throw new Error('Yaesu: set mode failed');
+  }
+
+  async sendRawBytes(data: Uint8Array): Promise<Uint8Array> {
+    // Response length varies by command (1 for set, 5 for read); try 5 with short timeout
+    return this.transport.sendAndReceiveBytes(data, 5, 500);
   }
 }

@@ -65,6 +65,8 @@ export class CivDriver implements RigDriver {
 
   set onDisconnect(cb: (() => void) | null) { this.transport.onDisconnect = cb; }
   get onDisconnect() { return this.transport.onDisconnect; }
+  set onLog(cb: import('../serial/console-types').OnLogCallback | null) { this.transport.onLog = cb; }
+  get onLog() { return this.transport.onLog; }
 
   isSupported(): boolean {
     return this.transport.isSupported();
@@ -181,5 +183,9 @@ export class CivDriver implements RigDriver {
       if (frame[i] === cmd) return i;
     }
     return null;
+  }
+
+  async sendRawBytes(data: Uint8Array): Promise<Uint8Array> {
+    return this.transport.sendAndReceive(data, EOM);
   }
 }

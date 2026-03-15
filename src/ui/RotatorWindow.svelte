@@ -7,6 +7,7 @@
   import Select from './shared/Select.svelte';
   import Input from './shared/Input.svelte';
   import InfoTip from './shared/InfoTip.svelte';
+  import ProtocolConsole from './shared/ProtocolConsole.svelte';
   import { uiStore } from '../stores/ui.svelte';
   import { beamStore, isInsideBeam } from '../stores/beam.svelte';
   import { rotatorStore, PARK_PRESETS, ANTENNA_PRESETS, type ParkPreset, type PassEndAction } from '../stores/rotator.svelte';
@@ -89,7 +90,7 @@
     };
   }
 
-  let tab = $state<'radar' | 'setup'>('radar');
+  let tab = $state<'radar' | 'setup' | 'console'>('radar');
   let bridgeTool = $state<'websockify' | 'websocat'>('websockify');
   let rotLocked = $derived(rotatorStore.status === 'connected' || rotatorStore.status === 'connecting');
   let rateDisplay = $derived(`${(rotatorStore.updateIntervalMs / 1000).toFixed(1)}s`);
@@ -931,7 +932,77 @@
 {#snippet headerExtra()}
   <div class="radar-header-extra">
     <Button size="xs" variant="ghost" active={tab === 'radar'} onclick={() => tab = 'radar'}>Radar</Button>
+    <Button size="xs" variant="ghost" active={tab === 'console'} onclick={() => tab = 'console'}>Console</Button>
     <Button size="xs" variant="ghost" active={tab === 'setup'} onclick={() => tab = 'setup'}>Setup</Button>
+  </div>
+{/snippet}
+
+{#snippet rotPanel()}
+  <div class="rot-panel">
+    <div class="rot-row">
+      <div class="rot-status">
+        <span class="rot-dot"
+          class:ok={rotatorStore.status === 'connected'}
+          class:loading={rotatorStore.status === 'connecting'}
+          class:err={rotatorStore.status === 'error'}></span>
+        <span class="rot-status-text">{rotatorStore.status}</span>
+      </div>
+      {#if rotatorStore.status === 'connected'}
+        <Button size="xs" title="Disconnect from rotator" onclick={() => rotatorStore.disconnect()}>Disconnect</Button>
+      {:else}
+        <Button size="xs" title="Connect to rotator" onclick={() => rotatorStore.connect()}
+          disabled={rotatorStore.status === 'connecting'}>Connect</Button>
+      {/if}
+    </div>
+
+    {#if rotatorStore.error}
+      <div class="rot-error">{rotatorStore.error}</div>
+    {/if}
+
+    {#if rotatorStore.status === 'connected'}
+      {@const aAz = rotatorStore.actualAz}
+      {@const aEl = rotatorStore.actualEl}
+      {@const tAz = rotatorStore.targetAz}
+      {@const tEl = rotatorStore.targetEl}
+      {@const hasActual = aAz !== null && aEl !== null}
+      {@const hasTarget = tAz !== null && tEl !== null}
+      {@const errAz = hasActual && hasTarget ? Math.abs(aAz! - tAz!) : null}
+      {@const errEl = hasActual && hasTarget ? Math.abs(aEl! - tEl!) : null}
+      {@const offTarget = errAz !== null && errEl !== null && (errAz > rotatorStore.tolerance || errEl > rotatorStore.tolerance)}
+
+      <div class="rot-pos">
+        <span class="rot-pos-label">Az</span>
+        <span class="rot-pos-val">{aAz?.toFixed(1) ?? '—'}°</span>
+        <span class="rot-pos-label">El</span>
+        <span class="rot-pos-val">{aEl?.toFixed(1) ?? '—'}°</span>
+        <span class="rot-pos-label">Rate</span>
+        <span class="rot-pos-val">{rotatorStore.velocityDegS.toFixed(2)}°/s</span>
+        {#if rotatorStore.slewWarning}
+          <span class="rot-pos-warn">CAN'T KEEP UP</span>
+        {:else if rotatorStore.nextAosEpoch > 0}
+          {@const secToAos = (rotatorStore.nextAosEpoch - timeStore.epoch) * 86400}
+          <span class="rot-pos-wait">AOS in {fmtCountdown(secToAos)}</span>
+        {:else if offTarget}
+          <span class="rot-pos-err">&Delta; {errAz?.toFixed(1)}° / {errEl?.toFixed(1)}°</span>
+        {:else if hasActual && hasTarget}
+          <span class="rot-pos-ok">{beamStore.locked ? `ON ${beamStore.lockedSatName}` : 'ON TARGET'}</span>
+        {:else if hasActual}
+          <span class="rot-pos-idle">IDLE</span>
+        {/if}
+      </div>
+
+      <div class="rot-actions">
+        <label class="rot-autotrack">
+          <Checkbox checked={rotatorStore.autoTrack} onchange={() => rotatorStore.setAutoTrack(!rotatorStore.autoTrack)} />
+          Auto slew<InfoTip>Continuously slew the rotator to follow the beam reticle. When tracking a satellite, sun, or moon, the rotator follows the target automatically. When unlocked, it follows manual reticle placement.</InfoTip>
+        </label>
+        <div class="rot-btns">
+          <Button size="xs" title="Slew to beam reticle position ({beamStore.aimAz.toFixed(1)}° / {beamStore.aimEl.toFixed(1)}°)" disabled={rotatorStore.autoTrack} onclick={() => rotatorStore.goto(beamStore.aimAz, beamStore.aimEl)}>Slew</Button>
+          <Button size="xs" title="Park at {parkPos.az.toFixed(1)}° / {parkPos.el.toFixed(1)}°" onclick={() => rotatorStore.park()}>Park</Button>
+          <Button size="xs" title="Stop movement and disable auto slew" onclick={() => rotatorStore.stop()}>Stop</Button>
+        </div>
+      </div>
+    {/if}
   </div>
 {/snippet}
 
@@ -984,76 +1055,10 @@
         onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
       <span class="radar-unit">°</span>
     </div>
-
-    <div class="rot-panel">
-      <div class="rot-row">
-        <div class="rot-status">
-          <span class="rot-dot"
-            class:ok={rotatorStore.status === 'connected'}
-            class:loading={rotatorStore.status === 'connecting'}
-            class:err={rotatorStore.status === 'error'}></span>
-          <span class="rot-status-text">{rotatorStore.status}</span>
-        </div>
-        {#if rotatorStore.status === 'connected'}
-          <Button size="xs" title="Disconnect from rotator" onclick={() => rotatorStore.disconnect()}>Disconnect</Button>
-        {:else}
-          <Button size="xs" title="Connect to rotator" onclick={() => rotatorStore.connect()}
-            disabled={rotatorStore.status === 'connecting'}>Connect</Button>
-        {/if}
-      </div>
-
-      {#if rotatorStore.error}
-        <div class="rot-error">{rotatorStore.error}</div>
-      {/if}
-
-      {#if rotatorStore.status === 'connected'}
-        {@const aAz = rotatorStore.actualAz}
-        {@const aEl = rotatorStore.actualEl}
-        {@const tAz = rotatorStore.targetAz}
-        {@const tEl = rotatorStore.targetEl}
-        {@const hasActual = aAz !== null && aEl !== null}
-        {@const hasTarget = tAz !== null && tEl !== null}
-        {@const errAz = hasActual && hasTarget ? Math.abs(aAz! - tAz!) : null}
-        {@const errEl = hasActual && hasTarget ? Math.abs(aEl! - tEl!) : null}
-        {@const offTarget = errAz !== null && errEl !== null && (errAz > rotatorStore.tolerance || errEl > rotatorStore.tolerance)}
-
-        <div class="rot-pos">
-          <span class="rot-pos-label">Az</span>
-          <span class="rot-pos-val">{aAz?.toFixed(1) ?? '—'}°</span>
-          <span class="rot-pos-label">El</span>
-          <span class="rot-pos-val">{aEl?.toFixed(1) ?? '—'}°</span>
-          <span class="rot-pos-label">Rate</span>
-          <span class="rot-pos-val">{rotatorStore.velocityDegS.toFixed(2)}°/s</span>
-          {#if rotatorStore.slewWarning}
-            <span class="rot-pos-warn">CAN'T KEEP UP</span>
-          {:else if rotatorStore.nextAosEpoch > 0}
-            {@const secToAos = (rotatorStore.nextAosEpoch - timeStore.epoch) * 86400}
-            <span class="rot-pos-wait">AOS in {fmtCountdown(secToAos)}</span>
-          {:else if offTarget}
-            <span class="rot-pos-err">&Delta; {errAz?.toFixed(1)}° / {errEl?.toFixed(1)}°</span>
-          {:else if hasActual && hasTarget}
-            <span class="rot-pos-ok">{beamStore.locked ? `ON ${beamStore.lockedSatName}` : 'ON TARGET'}</span>
-          {:else if hasActual}
-            <span class="rot-pos-idle">IDLE</span>
-          {/if}
-        </div>
-
-        <div class="rot-actions">
-          <label class="rot-autotrack">
-            <Checkbox checked={rotatorStore.autoTrack} onchange={() => rotatorStore.setAutoTrack(!rotatorStore.autoTrack)} />
-            Auto slew<InfoTip>Continuously slew the rotator to follow the beam reticle. When tracking a satellite, sun, or moon, the rotator follows the target automatically. When unlocked, it follows manual reticle placement.</InfoTip>
-          </label>
-          <div class="rot-btns">
-            <Button size="xs" title="Slew to beam reticle position ({beamStore.aimAz.toFixed(1)}° / {beamStore.aimEl.toFixed(1)}°)" disabled={rotatorStore.autoTrack} onclick={() => rotatorStore.goto(beamStore.aimAz, beamStore.aimEl)}>Slew</Button>
-            <Button size="xs" title="Park at {parkPos.az.toFixed(1)}° / {parkPos.el.toFixed(1)}°" onclick={() => rotatorStore.park()}>Park</Button>
-            <Button size="xs" title="Stop movement and disable auto slew" onclick={() => rotatorStore.stop()}>Stop</Button>
-          </div>
-        </div>
-      {/if}
-    </div>
+    {@render rotPanel()}
     </div>
 
-  {:else}
+  {:else if tab === 'setup'}
     <div class="setup-panel">
       <h4 class="section-header">Antenna</h4>
       <div class="row">
@@ -1215,6 +1220,22 @@
           {/if}
         </div>
       </details>
+    </div>
+
+  {:else if tab === 'console'}
+    <div class="console-tab">
+      <div class="console-area">
+        <ProtocolConsole
+          log={rotatorStore.commandLog}
+          connected={rotatorStore.status === 'connected'}
+          onSend={(cmd) => rotatorStore.sendRaw(cmd)}
+        />
+      </div>
+      <div class="console-controls">
+        <span class="console-proto">Protocol <span class="console-proto-val">{rotatorStore.mode === 'network' ? 'rotctld' : rotatorStore.serialProtocol === 'gs232' ? 'GS-232' : 'EasyComm II'}</span></span>
+        <Button size="xs" variant="ghost" onclick={() => rotatorStore.clearLog()}>Clear</Button>
+      </div>
+      {@render rotPanel()}
     </div>
   {/if}
 {/snippet}
@@ -1455,6 +1476,24 @@
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }
+
+  /* ── Console tab ── */
+  .console-tab {
+    width: 400px;
+  }
+  .console-area {
+    height: 420px;
+  }
+  .console-controls {
+    display: flex;
+    align-items: center;
+    padding: 8px 8px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text-ghost);
+  }
+  .console-proto { flex: 1; }
+  .console-proto-val { color: var(--text-muted); }
 
   /* ── Setup tab ── */
   .setup-panel {

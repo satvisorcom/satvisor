@@ -1,4 +1,5 @@
 import type { RigDriver, RigConnectOptions } from './protocol';
+import type { OnLogCallback } from '../serial/console-types';
 
 /**
  * Hamlib rigctld protocol over WebSocket (via websockify or similar TCP-to-WS bridge).
@@ -18,6 +19,7 @@ export class RigctldDriver implements RigDriver {
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
   onDisconnect: (() => void) | null = null;
+  onLog: OnLogCallback | null = null;
 
   get connected() { return this._connected; }
 
@@ -113,12 +115,18 @@ export class RigctldDriver implements RigDriver {
 
       const handler = (data: string) => {
         clearTimeout(timeout);
+        if (data) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: data });
         resolve(data);
       };
 
       this.responseQueue.push(handler);
       this.ws.send(this.encoder.encode(cmd));
+      this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: cmd });
     });
+  }
+
+  async sendRaw(cmd: string): Promise<string> {
+    return this.sendCommand(cmd.endsWith('\n') ? cmd : cmd + '\n');
   }
 
   private drainResponses(): void {

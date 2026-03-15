@@ -1,4 +1,6 @@
 import type { RigDriver, RigMode, RigSerialProtocol } from '../rig/protocol';
+import type { ConsoleLogEntry } from '../serial/console-types';
+import { MAX_LOG_ENTRIES } from '../serial/console-types';
 import type { SatRec } from 'satellite.js';
 import { calculateDopplerShift } from '../astro/doppler';
 import { observerStore } from './observer.svelte';
@@ -25,6 +27,12 @@ class RigStore {
   error = $state<string | null>(null);
   lastSentHz = $state<number | null>(null);
   currentHz = $state<number | null>(null);
+
+  // Protocol console
+  commandLog = $state<ConsoleLogEntry[]>([]);
+  get isBinaryProtocol() {
+    return this.mode === 'serial' && (this.serialProtocol === 'yaesu-legacy' || this.serialProtocol === 'civ');
+  }
 
   // Tracking params (pushed by DopplerWindow)
   private _satrec: SatRec | null = null;
@@ -95,6 +103,20 @@ class RigStore {
         this.stopTimer();
         this.driver = null;
       };
+      driver!.onLog = (entry: ConsoleLogEntry) => {
+        const lines = entry.text.split('\n');
+        if (lines.length <= 1) {
+          this.commandLog = [...this.commandLog.slice(-(MAX_LOG_ENTRIES - 1)), entry];
+        } else {
+          const entries = lines.filter(l => l).map((l, i) => ({
+            timestamp: entry.timestamp + i * 0.001,
+            direction: entry.direction,
+            text: l,
+            bytes: entry.bytes,
+          } satisfies ConsoleLogEntry));
+          this.commandLog = [...this.commandLog.slice(-(MAX_LOG_ENTRIES - entries.length)), ...entries];
+        }
+      };
 
       await driver!.connect({
         baudRate: this.baudRate,
@@ -126,6 +148,20 @@ class RigStore {
     this.error = null;
     this.lastSentHz = null;
     this.currentHz = null;
+  }
+
+  async sendRaw(cmd: string): Promise<void> {
+    if (!this.driver?.connected || !this.driver.sendRaw) return;
+    await this.driver.sendRaw(cmd);
+  }
+
+  async sendRawBytes(data: Uint8Array): Promise<void> {
+    if (!this.driver?.connected || !this.driver.sendRawBytes) return;
+    await this.driver.sendRawBytes(data);
+  }
+
+  clearLog(): void {
+    this.commandLog = [];
   }
 
   private startTimer(): void {

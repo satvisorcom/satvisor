@@ -1,6 +1,9 @@
 // Re-export SerialTransport from shared location for backward compatibility
 export { SerialTransport } from '../serial/transport';
 
+import type { OnLogCallback } from '../serial/console-types';
+export type { OnLogCallback };
+
 /** Connection mode for the rotator. */
 export type RotatorMode = 'serial' | 'network';
 
@@ -29,4 +32,6 @@ export interface RotatorDriver {
   getPosition(): Promise<RotatorPosition | null>;
   stop(): Promise<void>;
   onDisconnect: (() => void) | null;
+  onLog: OnLogCallback | null;
+  sendRaw?(cmd: string): Promise<string>;
 }

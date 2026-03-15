@@ -3,6 +3,8 @@
  * Used by both rotator (GS-232, EasyComm) and rig (Kenwood, Yaesu, CI-V) drivers.
  */
 
+import { formatHex, type OnLogCallback } from './console-types';
+
 /** Standard baud rates for serial connections. */
 export const BAUD_RATES = [4800, 9600, 19200, 38400, 57600, 115200] as const;
 
@@ -22,6 +24,7 @@ export class SerialTransport {
   private delimiter: string;
 
   onDisconnect: (() => void) | null = null;
+  onLog: OnLogCallback | null = null;
 
   constructor(delimiter = '\n') {
     this.delimiter = delimiter;
@@ -76,8 +79,10 @@ export class SerialTransport {
             this.readBuffer = '';
             const encoder = new TextEncoder();
             await this.writer.write(encoder.encode(line));
+            this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: line });
           }
           const result = await this.readLine(timeoutMs);
+          if (result) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: result });
           resolve(result);
         } catch (e) {
           resolve('');
@@ -92,6 +97,7 @@ export class SerialTransport {
       if (!this._connected || !this.writer) return;
       const encoder = new TextEncoder();
       await this.writer.write(encoder.encode(line));
+      this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: line });
     });
     await this.commandLock;
   }
@@ -171,6 +177,7 @@ export class BinarySerialTransport {
   private commandLock: Promise<void> = Promise.resolve();
 
   onDisconnect: (() => void) | null = null;
+  onLog: OnLogCallback | null = null;
 
   get connected() { return this._connected; }
 
@@ -213,6 +220,7 @@ export class BinarySerialTransport {
     this.commandLock = this.commandLock.then(async () => {
       if (!this._connected || !this.writer) return;
       await this.writer.write(data);
+      this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: formatHex(data), bytes: data });
     });
     await this.commandLock;
   }
@@ -227,8 +235,12 @@ export class BinarySerialTransport {
         }
         try {
           if (data.length > 0) this.readBuffer = [];
-          if (data.length > 0) await this.writer.write(data);
+          if (data.length > 0) {
+            await this.writer.write(data);
+            this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: formatHex(data), bytes: data });
+          }
           const result = await this.readFrame(sentinel, timeoutMs);
+          if (result.length > 0) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: formatHex(result), bytes: result });
           resolve(result);
         } catch {
           resolve(new Uint8Array(0));
@@ -248,7 +260,9 @@ export class BinarySerialTransport {
         try {
           this.readBuffer = [];
           await this.writer.write(data);
+          this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: formatHex(data), bytes: data });
           const result = await this.readExactly(count, timeoutMs);
+          if (result.length > 0) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: formatHex(result), bytes: result });
           resolve(result);
         } catch {
           resolve(new Uint8Array(0));

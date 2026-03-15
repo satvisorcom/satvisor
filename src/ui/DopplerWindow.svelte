@@ -24,8 +24,9 @@
   import Checkbox from './shared/Checkbox.svelte';
   import Slider from './shared/Slider.svelte';
   import InfoTip from './shared/InfoTip.svelte';
+  import ProtocolConsole from './shared/ProtocolConsole.svelte';
 
-  let tab = $state<'chart' | 'setup'>('chart');
+  let tab = $state<'chart' | 'setup' | 'console'>('chart');
   let bridgeTool = $state<'websockify' | 'websocat'>('websockify');
 
   const CANVAS_W = 400;
@@ -637,6 +638,7 @@
 {#snippet headerExtra()}
   <div class="dw-header-extra">
     <Button size="xs" variant="ghost" active={tab === 'chart'} onclick={() => tab = 'chart'}>Chart</Button>
+    <Button size="xs" variant="ghost" active={tab === 'console'} onclick={() => tab = 'console'}>Console</Button>
     <Button size="xs" variant="ghost" active={tab === 'setup'} onclick={() => tab = 'setup'}>Setup</Button>
   </div>
 {/snippet}
@@ -686,7 +688,7 @@
     ></canvas>
   </div>
 
-  {:else}
+  {:else if tab === 'setup'}
     <div class="setup-panel">
       <h4 class="section-header">Connection</h4>
       <div class="row">
@@ -817,6 +819,17 @@
           <span class="guide-note">Doppler correction is sent as absolute frequency. Radio should be in VFO mode.</span>
         </div>
       </details>
+    </div>
+
+  {:else if tab === 'console'}
+    <div class="console-tab">
+      <ProtocolConsole
+        log={rigStore.commandLog}
+        connected={rigStore.status === 'connected'}
+        isBinary={rigStore.isBinaryProtocol}
+        onSend={(cmd) => rigStore.sendRaw(cmd)}
+        onSendBytes={(data) => rigStore.sendRawBytes(data)}
+      />
     </div>
   {/if}
 {/snippet}
@@ -978,6 +991,12 @@
     font-size: 10px;
     color: var(--text-dim);
     cursor: pointer;
+  }
+
+  /* ── Console tab ── */
+  .console-tab {
+    width: 400px;
+    height: 240px;
   }
 
   /* ── Setup tab ── */

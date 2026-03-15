@@ -4,6 +4,7 @@
     rowHeight = 30,
     maxHeight = 400,
     buffer = 20,
+    bottomAlign = false,
     row,
     footer = undefined as any,
   }: {
@@ -11,6 +12,7 @@
     rowHeight?: number;
     maxHeight?: number;
     buffer?: number;
+    bottomAlign?: boolean;
     row: any;
     footer?: any;
   } = $props();
@@ -35,9 +37,11 @@
   let effectiveHeight = $derived(measuredHeight > 0 ? measuredHeight : maxHeight);
   let winStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - buffer));
   let winEnd = $derived(Math.min(items.length, winStart + Math.ceil(effectiveHeight / rowHeight) + 2 * buffer));
+  let bottomSpacer = $derived(bottomAlign ? Math.max(0, effectiveHeight - items.length * rowHeight) : 0);
 </script>
 
 <div class="vl-viewport" bind:this={viewportEl} style="max-height:{maxHeight}px" onscroll={onScroll}>
+  {#if bottomSpacer > 0}<div style="height:{bottomSpacer}px"></div>{/if}
   {#if winStart > 0}<div style="height:{winStart * rowHeight}px"></div>{/if}
   {#each items.slice(winStart, winEnd) as item, j (winStart + j)}
     {@render row(item, winStart + j)}

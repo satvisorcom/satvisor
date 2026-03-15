@@ -1,3 +1,5 @@
+import type { OnLogCallback } from '../serial/console-types';
+
 /** Standard radio operating modes sent to rigs via setMode(). */
 export const RADIO_MODES = ['FM', 'USB', 'LSB', 'CW', 'AM'] as const;
 
@@ -37,4 +39,7 @@ export interface RigDriver {
   getFrequency(): Promise<number | null>;
   setMode?(mode: string): Promise<void>;
   onDisconnect: (() => void) | null;
+  onLog: OnLogCallback | null;
+  sendRaw?(cmd: string): Promise<string>;
+  sendRawBytes?(data: Uint8Array): Promise<Uint8Array>;
 }

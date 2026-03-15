@@ -1,4 +1,4 @@
-import type { RotatorDriver, RotatorPosition, RotatorConnectOptions } from './protocol';
+import type { RotatorDriver, RotatorPosition, RotatorConnectOptions, OnLogCallback } from './protocol';
 
 /**
  * rotctld protocol over WebSocket (via websockify or similar TCP-to-WS bridge).
@@ -19,6 +19,7 @@ export class RotctldDriver implements RotatorDriver {
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
   onDisconnect: (() => void) | null = null;
+  onLog: OnLogCallback | null = null;
 
   get connected() { return this._connected; }
 
@@ -124,12 +125,18 @@ export class RotctldDriver implements RotatorDriver {
 
       const handler = (data: string) => {
         clearTimeout(timeout);
+        if (data) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: data });
         resolve(data);
       };
 
       this.responseQueue.push(handler);
       this.ws.send(this.encoder.encode(cmd));
+      this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: cmd });
     });
+  }
+
+  async sendRaw(cmd: string): Promise<string> {
+    return this.sendCommand(cmd.endsWith('\n') ? cmd : cmd + '\n');
   }
 
   /**

@@ -22,6 +22,8 @@ export class KenwoodDriver implements RigDriver {
 
   set onDisconnect(cb: (() => void) | null) { this.transport.onDisconnect = cb; }
   get onDisconnect() { return this.transport.onDisconnect; }
+  set onLog(cb: import('../serial/console-types').OnLogCallback | null) { this.transport.onLog = cb; }
+  get onLog() { return this.transport.onLog; }
 
   isSupported(): boolean {
     return this.transport.isSupported();
@@ -58,5 +60,9 @@ export class KenwoodDriver implements RigDriver {
     const code = MODE_CODES[mode.toUpperCase()];
     if (!code) return;
     await this.transport.sendOnly(`MD${code};`);
+  }
+
+  async sendRaw(cmd: string): Promise<string> {
+    return this.transport.sendCommand(cmd);
   }
 }

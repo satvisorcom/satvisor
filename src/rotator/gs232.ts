@@ -21,6 +21,8 @@ export class GS232Driver implements RotatorDriver {
 
   set onDisconnect(cb: (() => void) | null) { this.transport.onDisconnect = cb; }
   get onDisconnect() { return this.transport.onDisconnect; }
+  set onLog(cb: import('../serial/console-types').OnLogCallback | null) { this.transport.onLog = cb; }
+  get onLog() { return this.transport.onLog; }
 
   isSupported(): boolean {
     return this.transport.isSupported();
@@ -47,6 +49,10 @@ export class GS232Driver implements RotatorDriver {
 
   async stop(): Promise<void> {
     await this.transport.sendOnly('S\r');
+  }
+
+  async sendRaw(cmd: string): Promise<string> {
+    return this.transport.sendCommand(cmd);
   }
 }
 
