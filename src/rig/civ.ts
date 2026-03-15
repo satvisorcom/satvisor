@@ -74,6 +74,7 @@ export class CivDriver implements RigDriver {
 
   async connect(options: RigConnectOptions): Promise<void> {
     if (options.civAddress !== undefined) this.civAddress = options.civAddress;
+    this.transport.classifyResponse = (data) => data.includes(NAK) ? 'Command rejected (NAK)' : null;
     await this.transport.open(options.baudRate ?? 19200);
   }
 

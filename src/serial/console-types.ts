@@ -5,6 +5,7 @@ export interface ConsoleLogEntry {
   direction: 'tx' | 'rx';
   text: string;            // display string (raw text or hex for binary)
   bytes?: Uint8Array;      // raw bytes for binary protocols
+  error?: string;          // human-readable error description (e.g. RPRT code meaning)
 }
 
 export type OnLogCallback = (entry: ConsoleLogEntry) => void;

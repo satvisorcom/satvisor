@@ -2,6 +2,8 @@
   import type { ConsoleLogEntry } from '../../serial/console-types';
   import { parseHexInput } from '../../serial/console-types';
   import VirtualList from './VirtualList.svelte';
+  import { tooltip } from './tooltip';
+  import { ICON_WARN } from './icons';
 
   let {
     log,
@@ -121,10 +123,13 @@
     <div class="console-log" bind:this={wrapEl}>
       <VirtualList items={log} rowHeight={ROW_H} maxHeight={9999} buffer={10} bottomAlign>
         {#snippet row(entry: ConsoleLogEntry)}
-          <div class="log-line" class:tx={entry.direction === 'tx'} class:rx={entry.direction === 'rx'}>
+          <div class="log-line" class:tx={entry.direction === 'tx'} class:rx={entry.direction === 'rx'} class:err={!!entry.error}>
             <span class="log-ts">{formatTimestamp(entry.timestamp)}</span>
             <span class="log-dir">{entry.direction === 'tx' ? 'TX' : 'RX'}</span>
             <span class="log-data">{showText(entry.text)}</span>
+            {#if entry.error}
+              <span class="log-err" use:tooltip={entry.error}>{@html ICON_WARN}</span>
+            {/if}
           </div>
         {/snippet}
       </VirtualList>
@@ -168,6 +173,7 @@
   }
   .log-line {
     display: flex;
+    align-items: center;
     gap: 6px;
     height: 17px;
     white-space: pre;
@@ -177,6 +183,13 @@
   .log-line.tx .log-dir { color: var(--warning); }
   .log-line.rx .log-dir { color: var(--live); }
   .log-data { color: var(--text-muted); }
+  .log-line.err .log-data { color: var(--danger); }
+  .log-err {
+    color: var(--danger-bright);
+    flex-shrink: 0;
+    cursor: default;
+  }
+  .log-err :global(svg) { width: 11px; height: 11px; vertical-align: -1.5px; }
   .empty { color: var(--text-ghost); }
 
   .console-input {

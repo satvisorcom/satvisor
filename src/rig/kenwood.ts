@@ -30,6 +30,7 @@ export class KenwoodDriver implements RigDriver {
   }
 
   async connect(options: RigConnectOptions): Promise<void> {
+    this.transport.classifyResponse = (text) => text === '?' ? 'Syntax error (unknown command)' : null;
     await this.transport.open(options.baudRate ?? 9600);
     // Disable auto-information mode to prevent unsolicited status messages
     await this.transport.sendOnly('AI0;');

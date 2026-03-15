@@ -25,6 +25,8 @@ export class SerialTransport {
 
   onDisconnect: (() => void) | null = null;
   onLog: OnLogCallback | null = null;
+  /** Optional protocol-level error classifier for RX responses. */
+  classifyResponse: ((text: string) => string | null) | null = null;
 
   constructor(delimiter = '\n') {
     this.delimiter = delimiter;
@@ -82,7 +84,10 @@ export class SerialTransport {
             this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: line });
           }
           const result = await this.readLine(timeoutMs);
-          if (result) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: result });
+          if (result) {
+            const error = this.classifyResponse?.(result) ?? undefined;
+            this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: result, error });
+          }
           resolve(result);
         } catch (e) {
           resolve('');
@@ -178,6 +183,8 @@ export class BinarySerialTransport {
 
   onDisconnect: (() => void) | null = null;
   onLog: OnLogCallback | null = null;
+  /** Optional protocol-level error classifier for binary RX responses. */
+  classifyResponse: ((data: Uint8Array) => string | null) | null = null;
 
   get connected() { return this._connected; }
 
@@ -240,7 +247,10 @@ export class BinarySerialTransport {
             this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: formatHex(data), bytes: data });
           }
           const result = await this.readFrame(sentinel, timeoutMs);
-          if (result.length > 0) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: formatHex(result), bytes: result });
+          if (result.length > 0) {
+            const error = this.classifyResponse?.(result) ?? undefined;
+            this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: formatHex(result), bytes: result, error });
+          }
           resolve(result);
         } catch {
           resolve(new Uint8Array(0));
@@ -262,7 +272,10 @@ export class BinarySerialTransport {
           await this.writer.write(data);
           this.onLog?.({ timestamp: performance.now(), direction: 'tx', text: formatHex(data), bytes: data });
           const result = await this.readExactly(count, timeoutMs);
-          if (result.length > 0) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: formatHex(result), bytes: result });
+          if (result.length > 0) {
+            const error = this.classifyResponse?.(result) ?? undefined;
+            this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: formatHex(result), bytes: result, error });
+          }
           resolve(result);
         } catch {
           resolve(new Uint8Array(0));

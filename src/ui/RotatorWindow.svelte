@@ -956,7 +956,12 @@
     </div>
 
     {#if rotatorStore.error}
-      <div class="rot-error">{rotatorStore.error}</div>
+      <div class="rot-error">
+        <span>{rotatorStore.error}</span>
+        {#if rotatorStore.commandLog.length > 0}
+          <Button size="xs" variant="ghost" onclick={() => tab = 'console'}>See Console</Button>
+        {/if}
+      </div>
     {/if}
 
     {#if rotatorStore.status === 'connected'}
@@ -1391,6 +1396,10 @@
     text-transform: capitalize;
   }
   .rot-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
     font-size: 10px;
     color: var(--danger);
     margin-bottom: 6px;

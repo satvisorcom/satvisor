@@ -62,6 +62,8 @@ export class YaesuLegacyDriver implements RigDriver {
   }
 
   async connect(options: RigConnectOptions): Promise<void> {
+    this.transport.classifyResponse = (data) =>
+      data.length === 1 && data[0] !== 0x00 && data[0] !== 0xF0 ? 'Command failed (non-ACK)' : null;
     await this.transport.open(options.baudRate ?? 9600, 2); // 2 stop bits
   }
 

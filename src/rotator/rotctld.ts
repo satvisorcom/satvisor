@@ -125,7 +125,10 @@ export class RotctldDriver implements RotatorDriver {
 
       const handler = (data: string) => {
         clearTimeout(timeout);
-        if (data) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: data });
+        if (data) {
+          const error = classifyRprt(data);
+          this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: data, error });
+        }
         resolve(data);
       };
 
@@ -197,6 +200,13 @@ const RPRT_ERRORS: Record<string, string> = {
   '-14': 'Bus busy / collision',
   '-17': 'Argument out of range',
 };
+
+/** Return human-readable error for RPRT -N responses, or undefined if OK. */
+function classifyRprt(response: string): string | undefined {
+  const match = response.match(/RPRT\s+(-\d+)/);
+  if (match) return RPRT_ERRORS[match[1]] ?? `Unknown error ${match[1]}`;
+  return undefined;
+}
 
 /** Throw if rotctld returned an error code (RPRT -N). */
 function checkRprt(response: string): void {

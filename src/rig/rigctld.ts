@@ -115,7 +115,10 @@ export class RigctldDriver implements RigDriver {
 
       const handler = (data: string) => {
         clearTimeout(timeout);
-        if (data) this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: data });
+        if (data) {
+          const error = classifyRprt(data);
+          this.onLog?.({ timestamp: performance.now(), direction: 'rx', text: data, error });
+        }
         resolve(data);
       };
 
@@ -165,6 +168,13 @@ const RPRT_ERRORS: Record<string, string> = {
   '-21': 'Limit exceeded',
   '-22': 'Access denied',
 };
+
+/** Return human-readable error for RPRT -N responses, or undefined if OK. */
+function classifyRprt(response: string): string | undefined {
+  const match = response.match(/RPRT\s+(-\d+)/);
+  if (match && parseInt(match[1], 10) < 0) return RPRT_ERRORS[match[1]] ?? `Unknown error ${match[1]}`;
+  return undefined;
+}
 
 function checkRprt(response: string): void {
   const match = response.match(/RPRT\s+(-?\d+)/);

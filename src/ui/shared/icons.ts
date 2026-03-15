@@ -58,3 +58,5 @@ export const ICON_PASTE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentC
 export const ICON_RADAR = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><circle cx="8" cy="8" r="3.5"/><line x1="8" y1="8" x2="13" y2="3" stroke-width="1.5"/><line x1="8" y1="1" x2="8" y2="2"/><line x1="8" y1="14" x2="8" y2="15"/><line x1="1" y1="8" x2="2" y2="8"/><line x1="14" y1="8" x2="15" y2="8"/></svg>';
 
 export const ICON_FEEDBACK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10V6"/><path d="M6 12V4"/><path d="M9 11V5"/><path d="M12 13V3"/></svg>';
+
+export const ICON_WARN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 1.5L1 14.5h14z"/><line x1="8" y1="6" x2="8" y2="10" stroke-linecap="round"/><circle cx="8" cy="12.5" r="0.7" fill="currentColor" stroke="none"/></svg>';
