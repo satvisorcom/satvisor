@@ -113,6 +113,13 @@ void main() {
 
         // disc is always positive (surface is inside the cloud sphere)
         float t = (-b + sqrt(disc)) * 0.5;
+
+        // Cap shadow ray length: at sun elevations below ~5° atmospheric
+        // extinction kills >93% of direct beam (Kasten-Young airmass model),
+        // making shadows invisible. sin(5°) = 0.0872
+        float cloudH = max(cloudR - EARTH_R, 1e-5);
+        t = min(t, cloudH / 0.0872);
+
         vec3 cloudHit = surfPos + t * sunDir;
 
         // Convert cloud intersection to equirectangular UV
@@ -126,8 +133,8 @@ void main() {
 
         float cloudAlpha = texture2D(cloudTexture, cloudUV).a;
 
-        // Softer shadows on the day side, fade out near terminator
-        float shadowDayMask = smoothstep(-0.05, 0.25, rawIntensity);
+        // Shadows only on lit side — fade in from terminator to 15° sun elevation
+        float shadowDayMask = smoothstep(0.0, 0.25, rawIntensity);
         float shadowStrength = showGlare > 0.5 ? 1.0 : 0.8;
         cloudShadow = 1.0 - cloudAlpha * shadowStrength * shadowDayMask;
         scatteredDay *= cloudShadow;
