@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { DEG2RAD } from '../constants';
 import { computeMoonEcliptic } from './moon-core';
 
+const _out = new THREE.Vector3();
+
 export function calculateMoonPosition(currentEpoch: number): THREE.Vector3 {
   const { lambda, beta, distKm } = computeMoonEcliptic(currentEpoch);
 
@@ -15,5 +17,5 @@ export function calculateMoonPosition(currentEpoch: number): THREE.Vector3 {
   const zEci = yEcl * Math.sin(eps) + zEcl * Math.cos(eps);
 
   // ECI to render: x=eci.x, y=eci.z, z=-eci.y
-  return new THREE.Vector3(xEci, zEci, -yEci);
+  return _out.set(xEci, zEci, -yEci);
 }

@@ -18,6 +18,8 @@ import { uiStore } from '../stores/ui.svelte';
 import { createPinTexture, createDiamondTexture } from './marker-manager';
 import { getSpriteIndex } from './sprite-config';
 
+const _yAxis = new THREE.Vector3(0, 1, 0);
+
 export interface MapRendererInit {
   dayTex: THREE.Texture;
   nightTex: THREE.Texture;
@@ -417,14 +419,10 @@ export class MapRenderer {
 
     // Update map shader sun + moon direction for terminator and eclipse shadow
     this.mapMaterial.uniforms.showNight.value = cfg.showNightLights ? 1.0 : 0.0;
-    const sunEci = calculateSunPosition(epoch);
     const earthRotRad = (gmstDeg + cfg.earthRotationOffset) * DEG2RAD;
-    const yAxis = new THREE.Vector3(0, 1, 0);
-    const sunEcef = sunEci.clone().applyAxisAngle(yAxis, -earthRotRad);
-    this.mapMaterial.uniforms.sunDir.value.copy(sunEcef);
-    const moonRender = calculateMoonPosition(epoch);
-    const moonEcef = moonRender.applyAxisAngle(yAxis, -earthRotRad);
-    this.mapMaterial.uniforms.moonPos.value.copy(moonEcef);
+    const yAxis = _yAxis;
+    this.mapMaterial.uniforms.sunDir.value.copy(calculateSunPosition(epoch)).applyAxisAngle(yAxis, -earthRotRad);
+    this.mapMaterial.uniforms.moonPos.value.copy(calculateMoonPosition(epoch)).applyAxisAngle(yAxis, -earthRotRad);
 
     // Build set of sats needing highlight (ground track, footprint, apsis)
     // Keep hidden sats in array to preserve color indices

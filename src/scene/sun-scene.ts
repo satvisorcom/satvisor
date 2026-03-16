@@ -17,9 +17,7 @@ export class SunScene {
   }
 
   update(epoch: number) {
-    const dir = calculateSunPosition(epoch);
-    const pos = dir.multiplyScalar(SUN_DISTANCE);
-    this.disc.position.copy(pos);
+    this.disc.position.copy(calculateSunPosition(epoch)).multiplyScalar(SUN_DISTANCE);
   }
 
   setBloomEnabled(enabled: boolean) {

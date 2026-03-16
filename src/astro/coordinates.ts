@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { DEG2RAD, DRAW_SCALE, EARTH_RADIUS_KM, MAP_W, MAP_H } from '../constants';
 
+const _surfaceOut = new THREE.Vector3();
+
 export function eciToDrawPos(posKm: THREE.Vector3): THREE.Vector3 {
   return posKm.clone().divideScalar(DRAW_SCALE);
 }
@@ -37,7 +39,7 @@ export function latLonToSurface(
   const latRad = lat * DEG2RAD;
   const lonRad = (lon + gmstDeg + earthOffset) * DEG2RAD;
   const r = EARTH_RADIUS_KM / DRAW_SCALE;
-  return new THREE.Vector3(
+  return _surfaceOut.set(
     Math.cos(latRad) * Math.cos(lonRad) * r,
     Math.sin(latRad) * r,
     -Math.cos(latRad) * Math.sin(lonRad) * r

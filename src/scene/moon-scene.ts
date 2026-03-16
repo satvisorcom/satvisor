@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { MOON_RADIUS_KM, DRAW_SCALE } from '../constants';
 import { calculateMoonPosition } from '../astro/moon';
 
+const _dirToEarth = new THREE.Vector3();
+const _mZ = new THREE.Matrix4();
+const _mY = new THREE.Matrix4();
+
 const MOON_VERT = `
 uniform sampler2D displacementMap;
 uniform float displacementScale;
@@ -171,13 +175,13 @@ export class MoonScene {
     this.mesh.position.copy(this.drawPos);
 
     // Tidal lock: moon always faces Earth (origin)
-    const dirToEarth = this.drawPos.clone().negate().normalize();
-    const yaw = Math.atan2(-dirToEarth.z, dirToEarth.x);
-    const pitch = Math.asin(dirToEarth.y);
+    _dirToEarth.copy(this.drawPos).negate().normalize();
+    const yaw = Math.atan2(-_dirToEarth.z, _dirToEarth.x);
+    const pitch = Math.asin(_dirToEarth.y);
 
-    const mZ = new THREE.Matrix4().makeRotationZ(pitch);
-    const mY = new THREE.Matrix4().makeRotationY(yaw);
-    this.mesh.matrix.copy(mZ.premultiply(mY));
+    _mZ.makeRotationZ(pitch);
+    _mY.makeRotationY(yaw);
+    this.mesh.matrix.copy(_mZ.premultiply(_mY));
     this.mesh.matrix.setPosition(this.drawPos);
     this.mesh.matrixAutoUpdate = false;
   }
