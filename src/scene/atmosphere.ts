@@ -16,6 +16,7 @@ void main() {
 const ATMO_FRAG = `
 uniform vec3 sunDir;
 uniform float atmosphereStrength;
+uniform float limbWhitening;
 
 varying vec3 vWorldNormal;
 varying vec3 vViewDir;
@@ -31,13 +32,13 @@ void main() {
   float VdotL = dot(vViewDir, sunDir);
 
   // Sunset shift near terminator
-  vec3 dayColor = vec3(0.25, 0.58, 1.0);
+  vec3 dayColor = vec3(0.15, 0.45, 1.0);
   vec3 sunsetColor = vec3(1.0, 0.5, 0.2);
   float sunsetBlend = smoothstep(0.35, -0.15, NdotL);
   vec3 atmosColor = mix(dayColor, sunsetColor, sunsetBlend);
 
   // Limb whitening — thicker atmosphere at edges shifts toward blue-white
-  atmosColor = mix(atmosColor, vec3(0.7, 0.85, 1.0), pow(fresnel, 1.5) * 0.7);
+  atmosColor = mix(atmosColor, vec3(0.7, 0.85, 1.0), pow(fresnel, 1.5) * 0.7 * limbWhitening);
 
   // Forward-scatter glow when looking toward the sun through the limb
   float forwardGlow = pow(max(VdotL, 0.0), 8.0) * 0.15;
@@ -66,6 +67,7 @@ export class Atmosphere {
       uniforms: {
         sunDir: { value: new THREE.Vector3(1, 0, 0) },
         atmosphereStrength: { value: 5.0 },
+        limbWhitening: { value: 1.0 },
       },
       vertexShader: ATMO_VERT,
       fragmentShader: ATMO_FRAG,
@@ -87,6 +89,7 @@ export class Atmosphere {
 
   setBloomEnabled(on: boolean) {
     this.material.uniforms.atmosphereStrength.value = on ? 5.0 : 1.0;
+    this.material.uniforms.limbWhitening.value = on ? 0.0 : 1.0;
   }
 
   setSphereDetail(segments: number) {

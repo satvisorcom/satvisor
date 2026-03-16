@@ -72,6 +72,7 @@ void main() {
 
     vec4 night = texture2D(nightTexture, vUv, -2.0);
     if (nightEmission < 1.01) night.rgb *= 1.0 + smoothstep(0.05, 0.3, night.rgb) * 0.5;
+    else night.rgb *= mix(vec3(0.7), vec3(1.0), smoothstep(0.1, 0.3, night.rgb));
 
     // Perturb normal with tangent-space normal map (for terminator shading, not eclipse)
     vec3 normal = baseNormal;
@@ -166,8 +167,8 @@ void main() {
     if (showRimScatter > 0.5) {
         vec3 rimViewDir = normalize(viewPos - baseNormal * EARTH_R);
         float rimNdotV = max(dot(baseNormal, rimViewDir), 0.0);
-        float rim = pow(1.0 - rimNdotV, 4.0) * smoothstep(-0.1, 0.3, rawIntensity);
-        scatteredDay += vec3(0.25, 0.58, 1.0) * rim;
+        float rim = pow(1.0 - rimNdotV, 3.5) * smoothstep(-0.1, 0.3, rawIntensity);
+        scatteredDay += vec3(0.15, 0.45, 1.0) * rim * 1.4;
     }
 
     // Boost night emission for bloom (HDR values > 1.0)
